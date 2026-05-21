@@ -1,0 +1,90 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Participant in the quiniela",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "participant"] },
+        "totalPoints": { "type": "number" },
+        "predictionsReady": { "type": "boolean" }
+      },
+      "required": ["name", "email", "role"]
+    },
+    "Match": {
+      "title": "Match",
+      "description": "World Cup Match",
+      "type": "object",
+      "properties": {
+        "teamA": { "type": "string" },
+        "teamB": { "type": "string" },
+        "group": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "scoreA": { "type": "number" },
+        "scoreB": { "type": "number" },
+        "status": { "type": "string", "enum": ["scheduled", "finished"] }
+      },
+      "required": ["teamA", "teamB", "group", "date", "status"]
+    },
+    "Prediction": {
+      "title": "Prediction",
+      "description": "User prediction for a match",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "matchId": { "type": "string" },
+        "scoreA": { "type": "number" },
+        "scoreB": { "type": "number" },
+        "points": { "type": "number" }
+      },
+      "required": ["userId", "matchId", "scoreA", "scoreB"]
+    },
+    "Podium": {
+      "title": "Podium",
+      "description": "User prediction for top 4",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "champion": { "type": "string" },
+        "runnerUp": { "type": "string" },
+        "third": { "type": "string" },
+        "fourth": { "type": "string" }
+      },
+      "required": ["userId", "champion", "runnerUp", "third", "fourth"]
+    },
+    "ParleyQuestion": {
+      "title": "Parley Question",
+      "description": "Specific analytical questions",
+      "type": "object",
+      "properties": {
+        "question": { "type": "string" },
+        "options": { "type": "array" },
+        "correctAnswer": { "type": "string" },
+        "points": { "type": "number" }
+      },
+      "required": ["question", "points"]
+    },
+    "ParleyAnswer": {
+      "title": "Parley Answer",
+      "description": "User answer to parley questions",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "questionId": { "type": "string" },
+        "answer": { "type": "string" },
+        "points": { "type": "number" }
+      },
+      "required": ["userId", "questionId", "answer"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": { "schema": "User", "description": "User profiles" },
+    "/matches/{matchId}": { "schema": "Match", "description": "World Cup matches" },
+    "/predictions/{predictionId}": { "schema": "Prediction", "description": "Match predictions" },
+    "/podiums/{podiumId}": { "schema": "Podium", "description": "Podium predictions" },
+    "/parleyQuestions/{questionId}": { "schema": "ParleyQuestion", "description": "Parley questions definition" },
+    "/parleyAnswers/{answerId}": { "schema": "ParleyAnswer", "description": "User parley answers" }
+  }
+}

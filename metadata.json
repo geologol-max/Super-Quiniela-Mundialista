@@ -1,0 +1,8 @@
+{
+  "name": "Super Quiniela Mundialista",
+  "description": "Aplicación para administrar y participar en la quiniela del Mundial, con seguimiento de resultados, parley y dashboard de posiciones.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
