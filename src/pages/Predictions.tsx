@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, setDoc, getDocs, where, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { Match, Prediction, PodiumPrediction } from '../types';
-import { Save, AlertCircle, CheckCircle2, Trophy, Medal } from 'lucide-react';
+import { Match, Prediction, PodiumPrediction, isMatchLocked } from '../types';
+import { Save, AlertCircle, CheckCircle2, Trophy, Medal, Eye, Lock, Globe, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export function Predictions() {
@@ -20,6 +20,12 @@ export function Predictions() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [globalSaving, setGlobalSaving] = useState(false);
+
+  // States for peer comparison modal
+  const [comparisonMatch, setComparisonMatch] = useState<Match | null>(null);
+  const [comparisonPredictions, setComparisonPredictions] = useState<any[]>([]);
+  const [usersList, setUsersList] = useState<Record<string, string>>({});
+  const [loadingComparison, setLoadingComparison] = useState(false);
 
   useEffect(() => {
     // Load matches
@@ -55,6 +61,10 @@ export function Predictions() {
   }, [user]);
 
   const handleScoreChange = (matchId: string, team: 'A' | 'B', value: string) => {
+    // Prevent modification if locked
+    const match = matches.find(m => m.id === matchId);
+    if (match && (match.status === 'finished' || isMatchLocked(match.date))) return;
+
     const score = value === '' ? 0 : parseInt(value);
     setPredictions(prev => ({
       ...prev,
@@ -71,6 +81,12 @@ export function Predictions() {
 
   const savePrediction = async (matchId: string) => {
     if (!user) return;
+    const match = matches.find(m => m.id === matchId);
+    if (!match || match.status === 'finished' || isMatchLocked(match.date)) {
+      alert('Este partido está cerrado y no se pueden modificar las predicciones.');
+      return;
+    }
+
     const pred = predictions[matchId];
     if (!pred) return;
 
@@ -94,8 +110,13 @@ export function Predictions() {
     if (!user) return;
     setGlobalSaving(true);
     try {
-      // Save all match predictions
-      const promises = Object.entries(predictions).map(([matchId, pred]) => {
+      // Save only match predictions that are not locked
+      const validPredictions = Object.entries(predictions).filter(([matchId]) => {
+        const match = matches.find(m => m.id === matchId);
+        return match && match.status !== 'finished' && !isMatchLocked(match.date);
+      });
+
+      const promises = validPredictions.map(([matchId, pred]) => {
         const predId = `${user.uid}_${matchId}`;
         return setDoc(doc(db, 'predictions', predId), {
           ...pred,
@@ -119,6 +140,42 @@ export function Predictions() {
       alert('Error al guardar los datos.');
     } finally {
       setGlobalSaving(false);
+    }
+  };
+
+  const handleOpenComparison = async (match: Match) => {
+    setComparisonMatch(match);
+    setLoadingComparison(true);
+    setComparisonPredictions([]);
+    try {
+      let currentUsers = usersList;
+      if (Object.keys(usersList).length === 0) {
+        const usersSnap = await getDocs(collection(db, 'users'));
+        const uMap: Record<string, string> = {};
+        usersSnap.docs.forEach(doc => {
+          uMap[doc.id] = doc.data().name || 'Participante';
+        });
+        setUsersList(uMap);
+        currentUsers = uMap;
+      }
+
+      const q = query(collection(db, 'predictions'), where('matchId', '==', match.id));
+      const predSnap = await getDocs(q);
+      const preds = predSnap.docs.map(doc => {
+        const data = doc.data();
+        return {
+          userName: currentUsers[data.userId] || 'Invitado',
+          scoreA: data.scoreA,
+          scoreB: data.scoreB,
+          points: data.points,
+          userId: data.userId
+        };
+      });
+      setComparisonPredictions(preds);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoadingComparison(false);
     }
   };
 
@@ -215,6 +272,8 @@ export function Predictions() {
                 const scoreA = pred !== undefined ? pred.scoreA : '';
                 const scoreB = pred !== undefined ? pred.scoreB : '';
                 const isFinished = match.status === 'finished';
+                const isLocked = isMatchLocked(match.date);
+                const isDisabled = isFinished || isLocked;
                 
                 return (
                   <motion.div 
@@ -229,10 +288,10 @@ export function Predictions() {
                         <input 
                           type="number"
                           min="0"
-                          disabled={isFinished}
+                          disabled={isDisabled}
                           value={scoreA}
                           onChange={(e) => handleScoreChange(match.id, 'A', e.target.value)}
-                          className="w-14 h-14 text-center text-2xl font-black rounded-xl border-2 border-slate-100 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 focus:outline-none disabled:bg-slate-50 transition-all"
+                          className="w-14 h-14 text-center text-2xl font-black rounded-xl border-2 border-slate-100 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400 transition-all"
                         />
                         <div className="flex flex-col items-center">
                           <span className="text-slate-300 font-black text-xs">VS</span>
@@ -240,10 +299,10 @@ export function Predictions() {
                         <input 
                           type="number"
                           min="0"
-                          disabled={isFinished}
+                          disabled={isDisabled}
                           value={scoreB}
                           onChange={(e) => handleScoreChange(match.id, 'B', e.target.value)}
-                          className="w-14 h-14 text-center text-2xl font-black rounded-xl border-2 border-slate-100 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 focus:outline-none disabled:bg-slate-50 transition-all"
+                          className="w-14 h-14 text-center text-2xl font-black rounded-xl border-2 border-slate-100 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400 transition-all"
                         />
                       </div>
                       
@@ -256,22 +315,32 @@ export function Predictions() {
                            {new Date(match.date).toLocaleDateString()}
                         </div>
                         <div className="flex items-center justify-center md:justify-end">
-                          {new Date(match.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                           {new Date(match.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </div>
                       </div>
 
-                      <button 
-                        onClick={() => savePrediction(match.id)}
-                        disabled={isFinished || saving === match.id}
-                        className={`p-3 rounded-xl transition-all ${
-                          isFinished ? 'bg-slate-100 text-slate-400 cursor-not-allowed' :
-                          saving === match.id ? 'bg-green-100 text-green-600 shadow-inner' :
-                          'bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white shadow-sm hover:shadow-indigo-100'
-                        }`}
-                        title="Guardar este pronóstico"
-                      >
-                        {saving === match.id ? <CheckCircle2 className="w-6 h-6 animate-pulse" /> : <Save className="w-6 h-6" />}
-                      </button>
+                      {isLocked || isFinished ? (
+                        <button 
+                          onClick={() => handleOpenComparison(match)}
+                          className="p-3 bg-slate-50 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-xl border border-indigo-100 transition-all shadow-sm flex items-center gap-1.5 font-bold text-xs"
+                          title="Comparar pronósticos"
+                        >
+                          <Eye className="w-5 h-5" />
+                          <span className="hidden sm:inline">Ver otros</span>
+                        </button>
+                      ) : (
+                        <button 
+                          onClick={() => savePrediction(match.id)}
+                          disabled={saving === match.id}
+                          className={`p-3 rounded-xl transition-all ${
+                            saving === match.id ? 'bg-green-100 text-green-600 shadow-inner' :
+                            'bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white shadow-sm hover:shadow-indigo-100'
+                          }`}
+                          title="Guardar este pronóstico"
+                        >
+                          {saving === match.id ? <CheckCircle2 className="w-6 h-6 animate-pulse" /> : <Save className="w-6 h-6" />}
+                        </button>
+                      )}
                     </div>
 
                     {isFinished && (
@@ -280,6 +349,14 @@ export function Predictions() {
                         {pred?.points !== undefined && (
                           <span className="bg-indigo-600 text-white text-[10px] font-black px-3 py-1 rounded-full shadow-sm">+{pred.points} PUNTOS</span>
                         )}
+                      </div>
+                    )}
+
+                    {isLocked && !isFinished && (
+                      <div className="absolute -top-3 right-4 flex gap-2">
+                        <span className="bg-amber-600 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest shadow-sm flex items-center gap-1">
+                          <Lock className="w-2.5 h-2.5" /> Pronósticos Bloqueados
+                        </span>
                       </div>
                     )}
                   </motion.div>
@@ -300,6 +377,110 @@ export function Predictions() {
           Guardar Todos los Cambios
         </button>
       </div>
+
+      {/* Comparison Modal */}
+      <AnimatePresence>
+        {comparisonMatch && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white rounded-3xl p-6 md:p-8 max-w-lg w-full shadow-2xl border border-slate-100 space-y-6 relative overflow-hidden"
+            >
+              <div className="absolute top-0 right-0 -mr-6 -mt-6 w-24 h-24 bg-indigo-50 rounded-full blur-xl pointer-events-none"></div>
+              
+              <div className="flex justify-between items-start">
+                <div className="space-y-1">
+                  <h3 className="text-2xl font-black text-slate-800 tracking-tight font-display flex items-center gap-2">
+                    <Globe className="w-6 h-6 text-indigo-600" /> Comparar Pronósticos
+                  </h3>
+                  <p className="text-slate-400 text-xs uppercase tracking-wider font-bold">
+                    {comparisonMatch.group} • {new Date(comparisonMatch.date).toLocaleDateString()}
+                  </p>
+                </div>
+                <button 
+                  onClick={() => setComparisonMatch(null)}
+                  className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition"
+                >
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="bg-indigo-50/50 rounded-2xl p-4 flex items-center justify-between border border-indigo-50">
+                <span className="font-extrabold text-slate-800 flex-1 text-right">{comparisonMatch.teamA}</span>
+                <div className="mx-4 flex items-center gap-2">
+                  {comparisonMatch.status === 'finished' ? (
+                    <span className="bg-slate-800 text-white font-black text-sm px-3 py-1 rounded-full">
+                      {comparisonMatch.scoreA} - {comparisonMatch.scoreB}
+                    </span>
+                  ) : (
+                    <span className="text-slate-300 font-bold text-xs uppercase bg-white px-2 py-1 rounded border border-slate-100">VS</span>
+                  )}
+                </div>
+                <span className="font-extrabold text-slate-800 flex-1 text-left">{comparisonMatch.teamB}</span>
+              </div>
+
+              <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+                {loadingComparison ? (
+                  <div className="flex flex-col items-center justify-center py-12 gap-3 text-slate-400">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                    <span className="text-xs font-bold uppercase tracking-wider">Cargando pronósticos...</span>
+                  </div>
+                ) : comparisonPredictions.length === 0 ? (
+                  <div className="text-center py-12 text-slate-400 text-sm">
+                    No hay predicciones registradas para este partido.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-50">
+                    {comparisonPredictions.map((pred, i) => {
+                      const isExact = comparisonMatch.status === 'finished' && 
+                        pred.scoreA === comparisonMatch.scoreA && 
+                        pred.scoreB === comparisonMatch.scoreB;
+                      const hasPoints = pred.points !== undefined && pred.points > 0;
+                      
+                      return (
+                        <div key={i} className="py-3 flex items-center justify-between gap-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold text-xs">
+                              {pred.userName.charAt(0)}
+                            </div>
+                            <div>
+                              <div className="font-bold text-sm text-slate-800">{pred.userName}</div>
+                              {isExact && (
+                                <span className="text-[10px] bg-green-500 text-white font-black px-1.5 py-0.5 rounded flex items-center gap-0.5 w-max uppercase tracking-wider">
+                                  <Sparkles className="w-2.5 h-2.5" /> ¡Exacto!
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <span className="font-black text-lg text-slate-700 bg-slate-50 px-3 py-1 rounded-xl border border-slate-100">
+                              {pred.scoreA} - {pred.scoreB}
+                            </span>
+                            {comparisonMatch.status === 'finished' && (
+                              <span className={`text-[10px] font-black px-2 py-1 rounded-full ${
+                                isExact ? 'bg-green-600 text-white' : 
+                                hasPoints ? 'bg-indigo-600 text-white' : 
+                                'bg-slate-100 text-slate-400'
+                              }`}>
+                                +{pred.points || 0} PTS
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

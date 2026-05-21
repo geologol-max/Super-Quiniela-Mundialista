@@ -2,17 +2,24 @@ import { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, doc, setDoc, query, orderBy, deleteDoc, where, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Match, UserProfile, Prediction, calculateMatchPoints, ParleyQuestion } from '../types';
-import { Plus, Trash2, RefreshCw, Trophy, Users, CheckCircle } from 'lucide-react';
+import { Plus, Trash2, RefreshCw, Trophy, Users, CheckCircle, FileSpreadsheet, Upload, AlertTriangle } from 'lucide-react';
 
 export function Admin() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [newMatch, setNewMatch] = useState<Partial<Match>>({ teamA: '', teamB: '', group: '', date: '', status: 'scheduled' });
   const [isSeeding, setIsSeeding] = useState(false);
   const [parleyQuestions, setParleyQuestions] = useState<ParleyQuestion[]>([]);
+  const [userCount, setUserCount] = useState(0);
+
+  // CSV Import state
+  const [csvText, setCsvText] = useState('');
+  const [csvError, setCsvError] = useState('');
+  const [csvSuccess, setCsvSuccess] = useState('');
 
   useEffect(() => {
     fetchMatches();
     fetchParley();
+    fetchUsers();
   }, []);
 
   const fetchMatches = async () => {
@@ -24,6 +31,15 @@ export function Admin() {
   const fetchParley = async () => {
     const snap = await getDocs(collection(db, 'parleyQuestions'));
     setParleyQuestions(snap.docs.map(d => ({ id: d.id, ...d.data() } as ParleyQuestion)));
+  };
+
+  const fetchUsers = async () => {
+    try {
+      const snap = await getDocs(collection(db, 'users'));
+      setUserCount(snap.size);
+    } catch (error) {
+      console.error("Error fetching users:", error);
+    }
   };
 
   const handleAddMatch = async () => {
@@ -84,14 +100,91 @@ export function Admin() {
     }
   };
 
+  const handleImportCSV = async () => {
+    if (!csvText.trim()) return;
+    setCsvError('');
+    setCsvSuccess('');
+    setIsSeeding(true);
+
+    try {
+      const lines = csvText.split('\n');
+      const matchesToCreate = [];
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        // Skip empty lines, comments, or headers
+        if (!line || line.startsWith('#') || line.toLowerCase().startsWith('fecha') || line.toLowerCase().startsWith('date')) {
+          continue;
+        }
+
+        const parts = line.split(',');
+        if (parts.length < 4) {
+          throw new Error(`Línea ${i + 1} no tiene suficientes columnas. Se requiere: fecha,grupo,equipoA,equipoB`);
+        }
+
+        const [dateStr, group, teamA, teamB] = parts.map(p => p.trim());
+        if (!dateStr || !group || !teamA || !teamB) {
+          throw new Error(`Línea ${i + 1} contiene campos vacíos.`);
+        }
+
+        let parsedDate;
+        try {
+          parsedDate = new Date(dateStr).toISOString();
+        } catch (e) {
+          throw new Error(`Línea ${i + 1} tiene una fecha inválida: "${dateStr}". Debe ser formato ISO (ej: 2026-06-11T15:00:00Z).`);
+        }
+
+        matchesToCreate.push({
+          date: parsedDate,
+          group,
+          teamA,
+          teamB,
+          status: 'scheduled' as const
+        });
+      }
+
+      for (const m of matchesToCreate) {
+        await addDoc(collection(db, 'matches'), m);
+      }
+
+      setCsvSuccess(`¡Se importaron ${matchesToCreate.length} partidos correctamente!`);
+      setCsvText('');
+      fetchMatches();
+    } catch (err: any) {
+      setCsvError(err.message || 'Error al procesar el archivo CSV.');
+    } finally {
+      setIsSeeding(false);
+    }
+  };
+
   const seedSampleMatches = async () => {
     setIsSeeding(true);
+    // 24 Matches representing the first round across groups A through L for World Cup 2026
     const sampleMatches = [
-      { teamA: 'Catar', teamB: 'Ecuador', group: 'A', date: '2026-06-07T15:00:00Z', status: 'scheduled' },
-      { teamA: 'Inglaterra', teamB: 'Irán', group: 'B', date: '2026-06-08T13:00:00Z', status: 'scheduled' },
-      { teamA: 'Senegal', teamB: 'Países Bajos', group: 'A', date: '2026-06-08T16:00:00Z', status: 'scheduled' },
-      { teamA: 'EEUU', teamB: 'Gales', group: 'B', date: '2026-06-08T19:00:00Z', status: 'scheduled' },
-      { teamA: 'Argentina', teamB: 'Arabia Saudita', group: 'C', date: '2026-06-09T10:00:00Z', status: 'scheduled' },
+      { teamA: 'México', teamB: 'Sudáfrica', group: 'Grupo A', date: '2026-06-11T15:00:00Z', status: 'scheduled' as const },
+      { teamA: 'República Checa', teamB: 'Corea del Sur', group: 'Grupo A', date: '2026-06-11T19:00:00Z', status: 'scheduled' as const },
+      { teamA: 'Canadá', teamB: 'Bosnia-Herzegovina', group: 'Grupo B', date: '2026-06-12T15:00:00Z', status: 'scheduled' as const },
+      { teamA: 'Qatar', teamB: 'Suiza', group: 'Grupo B', date: '2026-06-12T19:00:00Z', status: 'scheduled' as const },
+      { teamA: 'Uruguay', teamB: 'Croacia', group: 'Grupo C', date: '2026-06-13T15:00:00Z', status: 'scheduled' as const },
+      { teamA: 'Ghana', teamB: 'Panamá', group: 'Grupo C', date: '2026-06-13T19:00:00Z', status: 'scheduled' as const },
+      { teamA: 'Estados Unidos', teamB: 'Paraguay', group: 'Grupo D', date: '2026-06-12T17:00:00Z', status: 'scheduled' as const },
+      { teamA: 'Australia', teamB: 'Turquía', group: 'Grupo D', date: '2026-06-13T17:00:00Z', status: 'scheduled' as const },
+      { teamA: 'Alemania', teamB: 'Ecuador', group: 'Grupo E', date: '2026-06-14T15:00:00Z', status: 'scheduled' as const },
+      { teamA: 'Costa de Marfil', teamB: 'Curazao', group: 'Grupo E', date: '2026-06-14T19:00:00Z', status: 'scheduled' as const },
+      { teamA: 'Países Bajos', teamB: 'Japón', group: 'Grupo F', date: '2026-06-15T15:00:00Z', status: 'scheduled' as const },
+      { teamA: 'Túnez', teamB: 'Suecia', group: 'Grupo F', date: '2026-06-15T19:00:00Z', status: 'scheduled' as const },
+      { teamA: 'Bélgica', teamB: 'Irán', group: 'Grupo G', date: '2026-06-16T15:00:00Z', status: 'scheduled' as const },
+      { teamA: 'Egipto', teamB: 'Nueva Zelanda', group: 'Grupo G', date: '2026-06-16T19:00:00Z', status: 'scheduled' as const },
+      { teamA: 'España', teamB: 'Arabia Saudita', group: 'Grupo H', date: '2026-06-17T15:00:00Z', status: 'scheduled' as const },
+      { teamA: 'Cabo Verde', teamB: 'Portugal', group: 'Grupo H', date: '2026-06-17T19:00:00Z', status: 'scheduled' as const },
+      { teamA: 'Francia', teamB: 'Senegal', group: 'Grupo I', date: '2026-06-18T15:00:00Z', status: 'scheduled' as const },
+      { teamA: 'Noruega', teamB: 'Irak', group: 'Grupo I', date: '2026-06-18T19:00:00Z', status: 'scheduled' as const },
+      { teamA: 'Argentina', teamB: 'Argelia', group: 'Grupo J', date: '2026-06-14T17:00:00Z', status: 'scheduled' as const },
+      { teamA: 'Austria', teamB: 'Jordania', group: 'Grupo J', date: '2026-06-14T21:00:00Z', status: 'scheduled' as const },
+      { teamA: 'Brasil', teamB: 'Marruecos', group: 'Grupo K', date: '2026-06-15T17:00:00Z', status: 'scheduled' as const },
+      { teamA: 'Escocia', teamB: 'Haití', group: 'Grupo K', date: '2026-06-15T21:00:00Z', status: 'scheduled' as const },
+      { teamA: 'Inglaterra', teamB: 'Uzbekistán', group: 'Grupo L', date: '2026-06-16T17:00:00Z', status: 'scheduled' as const },
+      { teamA: 'Colombia', teamB: 'RD Congo', group: 'Grupo L', date: '2026-06-16T21:00:00Z', status: 'scheduled' as const }
     ];
     for (const m of sampleMatches) {
       await addDoc(collection(db, 'matches'), m);
@@ -122,7 +215,7 @@ export function Admin() {
           <div className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1 flex items-center gap-2">
             <Users className="w-4 h-4" /> Usuarios
           </div>
-          <div className="text-2xl font-black text-indigo-600">Sync...</div>
+          <div className="text-2xl font-black text-indigo-600">{userCount}</div>
         </div>
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
           <div className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1 flex items-center gap-2">
@@ -160,6 +253,43 @@ export function Admin() {
             <button onClick={handleAddMatch} className="px-6 py-2 bg-white text-indigo-600 rounded-lg font-bold hover:bg-slate-50 transition">Crear Partido</button>
             <button onClick={seedSampleMatches} disabled={isSeeding} className="px-6 py-2 border border-white/30 rounded-lg text-white/80 hover:bg-white/10 transition">Sembrar Iniciales</button>
           </div>
+        </section>
+
+        {/* IMPORT FROM CSV */}
+        <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+          <h2 className="text-xl font-bold flex items-center gap-2 text-indigo-600 font-sans tracking-tight">
+            <FileSpreadsheet className="w-6 h-6" /> Importar Fixture (CSV)
+          </h2>
+          <p className="text-sm text-slate-500">
+            Pega una lista de partidos en formato CSV. Cada línea debe seguir el formato: <code>fecha,grupo,equipoA,equipoB</code>.<br />
+            Ejemplo: <code>2026-06-11T15:00:00Z,Grupo A,México,Sudáfrica</code>
+          </p>
+          <textarea
+            value={csvText}
+            onChange={e => setCsvText(e.target.value)}
+            className="w-full h-32 p-3 border border-slate-200 rounded-xl font-mono text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none"
+            placeholder="fecha,grupo,equipoA,equipoB"
+          />
+          {csvError && (
+            <div className="p-3 bg-red-50 border border-red-100 text-red-700 rounded-xl text-sm flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 flex-shrink-0 text-red-500" />
+              <span>{csvError}</span>
+            </div>
+          )}
+          {csvSuccess && (
+            <div className="p-3 bg-green-50 border border-green-100 text-green-700 rounded-xl text-sm flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 flex-shrink-0 text-green-500" />
+              <span>{csvSuccess}</span>
+            </div>
+          )}
+          <button
+            onClick={handleImportCSV}
+            disabled={isSeeding || !csvText.trim()}
+            className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold transition disabled:opacity-50 shadow-md shadow-indigo-100"
+          >
+            <Upload className="w-4 h-4" />
+            {isSeeding ? 'Importando...' : 'Importar Partidos'}
+          </button>
         </section>
 
         {/* RESOLVE PARLEY */}

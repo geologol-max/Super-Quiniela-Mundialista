@@ -31,11 +31,9 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Predictions - owner read/write, others can't see individual ones?
-    // Usually in a pool, you hide predictions until the match starts, 
-    // but here let's allow users to see their own.
+    // Predictions - owner create/update, all signed-in users can read (comparison logic filters in UI)
     match /predictions/{predictionId} {
-      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow read: if isSignedIn();
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow update: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
     }
@@ -53,9 +51,9 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Parley Answers
+    // Parley Answers - owner create/update, all signed-in users can read
     match /parleyAnswers/{answerId} {
-      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow read: if isSignedIn();
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow update: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
     }
