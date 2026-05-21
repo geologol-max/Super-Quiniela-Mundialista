@@ -23,29 +23,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (authUser) => {
-      setUser(authUser);
-      if (authUser) {
-        const docRef = doc(db, 'users', authUser.uid);
-        const docSnap = await getDoc(docRef);
-        
-        if (docSnap.exists()) {
-          setProfile(docSnap.data() as UserProfile);
+      try {
+        setUser(authUser);
+        if (authUser) {
+          const docRef = doc(db, 'users', authUser.uid);
+          const docSnap = await getDoc(docRef);
+          
+          if (docSnap.exists()) {
+            setProfile(docSnap.data() as UserProfile);
+          } else {
+            // Create default profile
+            const newProfile: UserProfile = {
+              uid: authUser.uid,
+              name: authUser.displayName || 'Participante',
+              email: authUser.email || '',
+              role: authUser.email === 'Geologol@gmail.com' ? 'admin' : 'participant',
+              totalPoints: 0
+            };
+            await setDoc(docRef, newProfile);
+            setProfile(newProfile);
+          }
         } else {
-          // Create default profile
-          const newProfile: UserProfile = {
+          setProfile(null);
+        }
+      } catch (err: any) {
+        console.error("Error loading user profile from Firestore:", err);
+        if (authUser) {
+          setProfile({
             uid: authUser.uid,
             name: authUser.displayName || 'Participante',
             email: authUser.email || '',
             role: authUser.email === 'Geologol@gmail.com' ? 'admin' : 'participant',
             totalPoints: 0
-          };
-          await setDoc(docRef, newProfile);
-          setProfile(newProfile);
+          });
         }
-      } else {
-        setProfile(null);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return () => unsubscribe();
