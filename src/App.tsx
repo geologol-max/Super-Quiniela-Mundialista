@@ -7,6 +7,7 @@ import { Predictions } from './pages/Predictions';
 import { Admin } from './pages/Admin';
 import { Parley } from './pages/Parley';
 import { useAuth } from './contexts/AuthContext';
+import { CountdownBanner } from './components/CountdownBanner';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -25,6 +26,7 @@ export default function App() {
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
       <Navbar />
       <main className="container mx-auto px-4 py-8 max-w-6xl">
+        <CountdownBanner />
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/auth" element={<Auth />} />

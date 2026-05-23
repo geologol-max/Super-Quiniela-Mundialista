@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification, updateProfile } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { UserProfile } from '../types';
 
@@ -22,47 +22,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (authUser) => {
+    let unsubscribeProfile: (() => void) | null = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (authUser) => {
       try {
+        if (unsubscribeProfile) {
+          unsubscribeProfile();
+          unsubscribeProfile = null;
+        }
+
         setUser(authUser);
         if (authUser) {
           const docRef = doc(db, 'users', authUser.uid);
-          const docSnap = await getDoc(docRef);
           
-          if (docSnap.exists()) {
-            setProfile(docSnap.data() as UserProfile);
-          } else {
-            // Create default profile
-            const newProfile: UserProfile = {
-              uid: authUser.uid,
-              name: authUser.displayName || 'Participante',
-              email: authUser.email || '',
-              role: authUser.email === 'Geologol@gmail.com' ? 'admin' : 'participant',
-              totalPoints: 0
-            };
-            await setDoc(docRef, newProfile);
-            setProfile(newProfile);
-          }
+          unsubscribeProfile = onSnapshot(docRef, async (docSnap) => {
+            if (docSnap.exists()) {
+              setProfile(docSnap.data() as UserProfile);
+            } else {
+              // Create default profile
+              const newProfile: UserProfile = {
+                uid: authUser.uid,
+                name: authUser.displayName || 'Participante',
+                email: authUser.email || '',
+                role: authUser.email === 'Geologol@gmail.com' ? 'admin' : 'participant',
+                totalPoints: 0,
+                avatarEmoji: '⚽' // Default emoji
+              };
+              await setDoc(docRef, newProfile);
+              setProfile(newProfile);
+            }
+          });
         } else {
           setProfile(null);
         }
-      } catch (err: any) {
-        console.error("Error loading user profile from Firestore:", err);
-        if (authUser) {
-          setProfile({
-            uid: authUser.uid,
-            name: authUser.displayName || 'Participante',
-            email: authUser.email || '',
-            role: authUser.email === 'Geologol@gmail.com' ? 'admin' : 'participant',
-            totalPoints: 0
-          });
-        }
+      } catch (error) {
+        console.error("Error setting up user profile in auth listener:", error);
       } finally {
         setLoading(false);
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeProfile) {
+        unsubscribeProfile();
+      }
+    };
   }, []);
 
   const loginWithGoogle = async () => {

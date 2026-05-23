@@ -24,6 +24,8 @@ export interface UserProfile {
   email: string;
   role: 'admin' | 'participant';
   totalPoints: number;
+  avatarEmoji?: string;
+  avatarUrl?: string;
 }
 
 export interface ParleyQuestion {
@@ -32,6 +34,7 @@ export interface ParleyQuestion {
   options: string[];
   correctAnswer?: string;
   points: number;
+  type?: 'select' | 'text' | 'number';
 }
 
 export interface ParleyAnswer {
@@ -52,40 +55,28 @@ export interface PodiumPrediction {
 
 /**
  * Calculates points for a single prediction based on rules:
- * - 3 pts for exact score (e.g. Pred: 2-1, Real: 2-1)
- * - 1 pt for correct trend (winner or draw) but not exact score (e.g. Pred: 1-0, Real: 3-1)
- * - 0 pts for incorrect trend
+ * - 5 pts for correct outcome (Win/Loss/Draw)
+ * - 1 pt extra for partial score (one team matches)
+ * - 3 pts extra for total score (both teams match)
  */
 export function calculateMatchPoints(predA: number, predB: number, realA: number, realB: number): number {
-  // Exact Score
-  if (predA === realA && predB === realB) {
-    return 3;
-  }
+  let points = 0;
 
-  // Outcome/Trend
+  // Outcome
   const predOutcome = predA > predB ? 'A' : (predA < predB ? 'B' : 'D');
   const realOutcome = realA > realB ? 'A' : (realA < realB ? 'B' : 'D');
 
   if (predOutcome === realOutcome) {
-    return 1;
+    points += 5;
+    
+    // Exact Score
+    if (predA === realA && predB === realB) {
+      points += 3;
+    } else if (predA === realA || predB === realB) {
+      // Partial Score (only if outcome was correct? Rules say "adicional si su acierto fue parcial")
+      points += 1;
+    }
   }
 
-  return 0;
+  return points;
 }
-
-/**
- * Checks if a match is locked for predictions (15 minutes before start).
- */
-export function isMatchLocked(matchDate: string): boolean {
-  try {
-    const now = new Date();
-    const gameTime = new Date(matchDate);
-    // Lock 15 minutes before the match starts
-    const lockTime = new Date(gameTime.getTime() - 15 * 60 * 1000);
-    return now >= lockTime;
-  } catch (error) {
-    console.error("Error parsing match date:", error);
-    return false;
-  }
-}
-

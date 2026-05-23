@@ -35,16 +35,37 @@ export function Navbar() {
             )}
             <div className="h-6 w-px bg-slate-200 hidden sm:block"></div>
             <div className="flex items-center gap-3">
-              <div className="hidden sm:flex flex-col items-end">
-                <span className="text-xs font-semibold">{profile?.name}</span>
-                <span className="text-[10px] text-indigo-500 font-bold">{profile?.totalPoints} Ptos</span>
+              <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-705 overflow-hidden shrink-0 relative shadow-sm">
+                {profile?.avatarUrl ? (
+                  <img 
+                    src={profile.avatarUrl} 
+                    alt={profile.name} 
+                    className="w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                ) : null}
+                
+                {!profile?.avatarUrl ? (
+                  profile?.avatarEmoji ? (
+                    <span className="text-lg leading-none select-none">{profile.avatarEmoji}</span>
+                  ) : (
+                    <span className="font-bold text-indigo-600 text-xs">{profile?.name.charAt(0).toUpperCase()}</span>
+                  )
+                ) : null}
+              </div>
+              <div className="hidden sm:flex flex-col items-start leading-tight">
+                <span className="text-xs font-bold text-slate-800">{profile?.name}</span>
+                <span className="text-[10px] text-indigo-600 font-bold">{profile?.totalPoints} Ptos</span>
               </div>
               <button 
                 onClick={logout}
-                className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+                className="p-1.5 hover:bg-slate-100 rounded-full transition-colors ml-1"
                 title="Cerrar sesión"
               >
-                <LogOut className="w-5 h-5 text-slate-500" />
+                <LogOut className="w-4 h-4 text-slate-500" />
               </button>
             </div>
           </div>

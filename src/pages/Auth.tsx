@@ -30,49 +30,20 @@ export function Auth() {
         setSentVerification(true);
       }
     } catch (err: any) {
-      console.error("Auth error details:", err);
-      const code = err?.code || '';
-      const msg = err?.message || '';
-      
-      if (code === 'auth/email-already-in-use' || msg.includes('email-already-in-use')) {
-        setError('Este correo ya está en uso.');
-      } else if (code === 'auth/operation-not-allowed' || msg.includes('operation-not-allowed')) {
-        setError('El proveedor de inicio de sesión (Correo/Contraseña) está desactivado en Firebase Console.');
-      } else if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found' || msg.includes('invalid-credential') || msg.includes('wrong-password') || msg.includes('user-not-found')) {
-        setError('Correo o contraseña incorrectos. Verifica tus credenciales.');
-      } else if (code === 'auth/weak-password' || msg.includes('weak-password')) {
-        setError('La contraseña debe tener al menos 6 caracteres.');
-      } else if (code === 'auth/invalid-email' || msg.includes('invalid-email')) {
-        setError('El correo electrónico ingresado no es válido.');
-      } else if (code === 'auth/too-many-requests' || msg.includes('too-many-requests')) {
-        setError('Demasiados intentos fallidos. Tu cuenta ha sido bloqueada temporalmente.');
-      } else {
-        setError(`Error: ${msg || 'Error al procesar la solicitud.'}`);
-      }
+      setError(err.message === 'Firebase: Error (auth/email-already-in-use).' 
+        ? 'Este correo ya está en uso.' 
+        : 'Error al procesar la solicitud. Verifica tus credenciales.');
     } finally {
       setLoading(false);
     }
   };
 
   const handleGoogleLogin = async () => {
-    setError('');
     try {
       await loginWithGoogle();
       navigate('/dashboard');
     } catch (err: any) {
-      console.error("Google Login error details:", err);
-      const code = err?.code || '';
-      const msg = err?.message || '';
-      
-      if (code === 'auth/operation-not-allowed' || msg.includes('operation-not-allowed')) {
-        setError('El proveedor de Google Sign-In está desactivado en Firebase Console.');
-      } else if (code === 'auth/popup-closed-by-user' || msg.includes('popup-closed-by-user')) {
-        setError('El usuario cerró la ventana de inicio de sesión de Google.');
-      } else if (code === 'auth/unauthorized-domain' || msg.includes('unauthorized-domain')) {
-        setError('Este dominio no está autorizado para el inicio de sesión con Google. Configúralo en la consola de Firebase.');
-      } else {
-        setError(`Error al iniciar sesión con Google: ${msg || err}`);
-      }
+      setError('Error al iniciar sesión con Google.');
     }
   };
 
