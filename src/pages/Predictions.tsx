@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, setDoc, getDocs, where, getDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, setDoc, getDocs, where, getDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { useDeadline } from '../components/CountdownBanner';
 import { Match, Prediction, PodiumPrediction } from '../types';
-import { Save, AlertCircle, CheckCircle2, Trophy, Medal, Clock, RefreshCw, BarChart2, Star } from 'lucide-react';
+import { Save, AlertCircle, CheckCircle2, Trophy, Medal, Clock, RefreshCw, BarChart2, Star, Info, ChevronDown, ChevronUp, Users, Sparkles, Calendar } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 // TEAM FLAGS EMOJI DICTIONARY
@@ -159,10 +159,364 @@ export const OFFICIAL_2026_MATCHES_SEED = [
   { teamA: 'Croacia', teamB: 'Panamá', group: 'Grupo L', date: '2026-06-29T21:00:00Z', status: 'scheduled' }
 ];
 
+export interface KnockoutSource {
+  type: 'group' | 'thirds' | 'match_winner' | 'match_loser';
+  rank?: number;
+  group?: string;
+  index?: number;
+  matchId?: string;
+}
+
+export interface KnockoutMatchConfig {
+  id: string;
+  phase: 'dieciseisavos' | 'octavos' | 'cuartos' | 'semifinales' | 'final' | 'tercer_lugar';
+  label: string;
+  dateStr: string;
+  timeStr: string;
+  stadium: string;
+  teamASource: KnockoutSource;
+  teamBSource: KnockoutSource;
+}
+
+export const KNOCKOUT_MATCHES_CONFIG: KnockoutMatchConfig[] = [
+  // Dieciseisavos de final
+  {
+    id: 'ko_73',
+    phase: 'dieciseisavos',
+    label: 'Partido 73',
+    dateStr: '28 de Junio',
+    timeStr: '15:00',
+    stadium: 'SoFi Stadium, Los Ángeles',
+    teamASource: { type: 'group', rank: 0, group: 'Grupo A' },
+    teamBSource: { type: 'thirds', index: 0 }
+  },
+  {
+    id: 'ko_76',
+    phase: 'dieciseisavos',
+    label: 'Partido 76',
+    dateStr: '29 de Junio',
+    timeStr: '13:00',
+    stadium: 'NRG Stadium, Houston',
+    teamASource: { type: 'group', rank: 1, group: 'Grupo A' },
+    teamBSource: { type: 'group', rank: 1, group: 'Grupo B' }
+  },
+  {
+    id: 'ko_74',
+    phase: 'dieciseisavos',
+    label: 'Partido 74',
+    dateStr: '29 de Junio',
+    timeStr: '16:30',
+    stadium: 'Gillette Stadium, Boston',
+    teamASource: { type: 'group', rank: 0, group: 'Grupo E' },
+    teamBSource: { type: 'thirds', index: 1 }
+  },
+  {
+    id: 'ko_75',
+    phase: 'dieciseisavos',
+    label: 'Partido 75',
+    dateStr: '29 de Junio',
+    timeStr: '21:00',
+    stadium: 'Estadio BBVA, Monterrey',
+    teamASource: { type: 'group', rank: 0, group: 'Grupo F' },
+    teamBSource: { type: 'group', rank: 1, group: 'Grupo C' }
+  },
+  {
+    id: 'ko_78',
+    phase: 'dieciseisavos',
+    label: 'Partido 78',
+    dateStr: '30 de Junio',
+    timeStr: '13:00',
+    stadium: 'AT&T Stadium, Dallas',
+    teamASource: { type: 'group', rank: 1, group: 'Grupo E' },
+    teamBSource: { type: 'group', rank: 1, group: 'Grupo I' }
+  },
+  {
+    id: 'ko_77',
+    phase: 'dieciseisavos',
+    label: 'Partido 77',
+    dateStr: '30 de Junio',
+    timeStr: '17:00',
+    stadium: 'MetLife Stadium, Nueva York',
+    teamASource: { type: 'group', rank: 0, group: 'Grupo C' },
+    teamBSource: { type: 'group', rank: 1, group: 'Grupo F' }
+  },
+  {
+    id: 'ko_79',
+    phase: 'dieciseisavos',
+    label: 'Partido 79',
+    dateStr: '30 de Junio',
+    timeStr: '21:00',
+    stadium: 'Estadio Azteca, CDMX',
+    teamASource: { type: 'group', rank: 0, group: 'Grupo I' },
+    teamBSource: { type: 'thirds', index: 2 }
+  },
+  {
+    id: 'ko_80',
+    phase: 'dieciseisavos',
+    label: 'Partido 80',
+    dateStr: '01 de Julio',
+    timeStr: '12:00',
+    stadium: 'Mercedes-Benz Stadium, Atlanta',
+    teamASource: { type: 'group', rank: 0, group: 'Grupo H' },
+    teamBSource: { type: 'group', rank: 1, group: 'Grupo J' }
+  },
+  {
+    id: 'ko_82',
+    phase: 'dieciseisavos',
+    label: 'Partido 82',
+    dateStr: '01 de Julio',
+    timeStr: '16:00',
+    stadium: 'Lumen Field, Seattle',
+    teamASource: { type: 'group', rank: 0, group: 'Grupo L' },
+    teamBSource: { type: 'thirds', index: 3 }
+  },
+  {
+    id: 'ko_81',
+    phase: 'dieciseisavos',
+    label: 'Partido 81',
+    dateStr: '01 de Julio',
+    timeStr: '20:00',
+    stadium: 'Levi\'s Stadium, San Francisco',
+    teamASource: { type: 'group', rank: 1, group: 'Grupo D' },
+    teamBSource: { type: 'group', rank: 1, group: 'Grupo G' }
+  },
+  {
+    id: 'ko_84',
+    phase: 'dieciseisavos',
+    label: 'Partido 84',
+    dateStr: '02 de Julio',
+    timeStr: '15:00',
+    stadium: 'SoFi Stadium, Los Ángeles',
+    teamASource: { type: 'group', rank: 0, group: 'Grupo G' },
+    teamBSource: { type: 'thirds', index: 4 }
+  },
+  {
+    id: 'ko_83',
+    phase: 'dieciseisavos',
+    label: 'Partido 83',
+    dateStr: '02 de Julio',
+    timeStr: '19:00',
+    stadium: 'BMO Field, Toronto',
+    teamASource: { type: 'group', rank: 0, group: 'Grupo K' },
+    teamBSource: { type: 'thirds', index: 5 }
+  },
+  {
+    id: 'ko_85',
+    phase: 'dieciseisavos',
+    label: 'Partido 85',
+    dateStr: '03 de Julio',
+    timeStr: '23:00',
+    stadium: 'BC Place, Vancouver',
+    teamASource: { type: 'group', rank: 0, group: 'Grupo D' },
+    teamBSource: { type: 'thirds', index: 6 }
+  },
+  {
+    id: 'ko_88',
+    phase: 'dieciseisavos',
+    label: 'Partido 88',
+    dateStr: '03 de Julio',
+    timeStr: '14:00',
+    stadium: 'AT&T Stadium, Dallas',
+    teamASource: { type: 'group', rank: 1, group: 'Grupo K' },
+    teamBSource: { type: 'group', rank: 1, group: 'Grupo L' }
+  },
+  {
+    id: 'ko_86',
+    phase: 'dieciseisavos',
+    label: 'Partido 86',
+    dateStr: '03 de Julio',
+    timeStr: '18:00',
+    stadium: 'Hard Rock Stadium, Miami',
+    teamASource: { type: 'group', rank: 0, group: 'Grupo J' },
+    teamBSource: { type: 'group', rank: 1, group: 'Grupo H' }
+  },
+  {
+    id: 'ko_87',
+    phase: 'dieciseisavos',
+    label: 'Partido 87',
+    dateStr: '03 de Julio',
+    timeStr: '21:30',
+    stadium: 'Arrowhead Stadium, Kansas City',
+    teamASource: { type: 'group', rank: 0, group: 'Grupo B' },
+    teamBSource: { type: 'thirds', index: 7 }
+  },
+
+  // Octavos de final
+  {
+    id: 'ko_89',
+    phase: 'octavos',
+    label: 'Octavos - P89',
+    dateStr: '04 de Julio',
+    timeStr: '15:00',
+    stadium: 'NRG Stadium, Houston',
+    teamASource: { type: 'match_winner', matchId: 'ko_73' },
+    teamBSource: { type: 'match_winner', matchId: 'ko_75' }
+  },
+  {
+    id: 'ko_90',
+    phase: 'octavos',
+    label: 'Octavos - P90',
+    dateStr: '04 de Julio',
+    timeStr: '19:00',
+    stadium: 'Mercedes-Benz Stadium, Atlanta',
+    teamASource: { type: 'match_winner', matchId: 'ko_74' },
+    teamBSource: { type: 'match_winner', matchId: 'ko_77' }
+  },
+  {
+    id: 'ko_91',
+    phase: 'octavos',
+    label: 'Octavos - P91',
+    dateStr: '05 de Julio',
+    timeStr: '15:00',
+    stadium: 'Gillette Stadium, Boston',
+    teamASource: { type: 'match_winner', matchId: 'ko_76' },
+    teamBSource: { type: 'match_winner', matchId: 'ko_78' }
+  },
+  {
+    id: 'ko_92',
+    phase: 'octavos',
+    label: 'Octavos - P92',
+    dateStr: '05 de Julio',
+    timeStr: '19:00',
+    stadium: 'Estadio BBVA, Monterrey',
+    teamASource: { type: 'match_winner', matchId: 'ko_79' },
+    teamBSource: { type: 'match_winner', matchId: 'ko_80' }
+  },
+  {
+    id: 'ko_93',
+    phase: 'octavos',
+    label: 'Octavos - P93',
+    dateStr: '06 de Julio',
+    timeStr: '15:00',
+    stadium: 'MetLife Stadium, Nueva York',
+    teamASource: { type: 'match_winner', matchId: 'ko_83' },
+    teamBSource: { type: 'match_winner', matchId: 'ko_84' }
+  },
+  {
+    id: 'ko_94',
+    phase: 'octavos',
+    label: 'Octavos - P94',
+    dateStr: '06 de Julio',
+    timeStr: '19:00',
+    stadium: 'AT&T Stadium, Dallas',
+    teamASource: { type: 'match_winner', matchId: 'ko_81' },
+    teamBSource: { type: 'match_winner', matchId: 'ko_82' }
+  },
+  {
+    id: 'ko_95',
+    phase: 'octavos',
+    label: 'Octavos - P95',
+    dateStr: '07 de Julio',
+    timeStr: '15:00',
+    stadium: 'Hard Rock Stadium, Miami',
+    teamASource: { type: 'match_winner', matchId: 'ko_86' },
+    teamBSource: { type: 'match_winner', matchId: 'ko_88' }
+  },
+  {
+    id: 'ko_96',
+    phase: 'octavos',
+    label: 'Octavos - P96',
+    dateStr: '07 de Julio',
+    timeStr: '19:00',
+    stadium: 'SoFi Stadium, Los Ángeles',
+    teamASource: { type: 'match_winner', matchId: 'ko_85' },
+    teamBSource: { type: 'match_winner', matchId: 'ko_87' }
+  },
+
+  // Cuartos de final
+  {
+    id: 'ko_97',
+    phase: 'cuartos',
+    label: 'Cuartos - P97',
+    dateStr: '09 de Julio',
+    timeStr: '16:00',
+    stadium: 'Gillette Stadium, Boston',
+    teamASource: { type: 'match_winner', matchId: 'ko_89' },
+    teamBSource: { type: 'match_winner', matchId: 'ko_90' }
+  },
+  {
+    id: 'ko_98',
+    phase: 'cuartos',
+    label: 'Cuartos - P98',
+    dateStr: '09 de Julio',
+    timeStr: '20:00',
+    stadium: 'Mercedes-Benz Stadium, Atlanta',
+    teamASource: { type: 'match_winner', matchId: 'ko_91' },
+    teamBSource: { type: 'match_winner', matchId: 'ko_92' }
+  },
+  {
+    id: 'ko_99',
+    phase: 'cuartos',
+    label: 'Cuartos - P99',
+    dateStr: '10 de Julio',
+    timeStr: '20:00',
+    stadium: 'Hard Rock Stadium, Miami',
+    teamASource: { type: 'match_winner', matchId: 'ko_93' },
+    teamBSource: { type: 'match_winner', matchId: 'ko_94' }
+  },
+  {
+    id: 'ko_100',
+    phase: 'cuartos',
+    label: 'Cuartos - P100',
+    dateStr: '10 de Julio',
+    timeStr: '16:00',
+    stadium: 'SoFi Stadium, Los Ángeles',
+    teamASource: { type: 'match_winner', matchId: 'ko_95' },
+    teamBSource: { type: 'match_winner', matchId: 'ko_96' }
+  },
+
+  // Semifinales
+  {
+    id: 'ko_101',
+    phase: 'semifinales',
+    label: 'Semifinal - P101',
+    dateStr: '14 de Julio',
+    timeStr: '20:00',
+    stadium: 'AT&T Stadium, Dallas',
+    teamASource: { type: 'match_winner', matchId: 'ko_97' },
+    teamBSource: { type: 'match_winner', matchId: 'ko_98' }
+  },
+  {
+    id: 'ko_102',
+    phase: 'semifinales',
+    label: 'Semifinal - P102',
+    dateStr: '15 de Julio',
+    timeStr: '20:00',
+    stadium: 'Mercedes-Benz Stadium, Atlanta',
+    teamASource: { type: 'match_winner', matchId: 'ko_99' },
+    teamBSource: { type: 'match_winner', matchId: 'ko_100' }
+  },
+
+  // Tercer Lugar
+  {
+    id: 'ko_103',
+    phase: 'tercer_lugar',
+    label: 'Tercer Lugar',
+    dateStr: '18 de Julio',
+    timeStr: '16:00',
+    stadium: 'Hard Rock Stadium, Miami',
+    teamASource: { type: 'match_loser', matchId: 'ko_101' },
+    teamBSource: { type: 'match_loser', matchId: 'ko_102' }
+  },
+
+  // Final
+  {
+    id: 'ko_104',
+    phase: 'final',
+    label: 'Gran Final',
+    dateStr: '19 de Julio',
+    timeStr: '16:00',
+    stadium: 'MetLife Stadium, Nueva York',
+    teamASource: { type: 'match_winner', matchId: 'ko_101' },
+    teamBSource: { type: 'match_winner', matchId: 'ko_102' }
+  }
+];
+
 export function Predictions() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const isLocked = useDeadline();
-  const [activeTab, setActiveTab] = useState<'grupos' | 'cuadro'>('grupos');
+  const [activeTab, setActiveTab] = useState<'grupos' | 'eliminatorias' | 'cuadro'>('grupos');
+  const [selectedPhase, setSelectedPhase] = useState<'dieciseisavos' | 'octavos' | 'cuartos' | 'semis_final'>('dieciseisavos');
   const [selectedGroup, setSelectedGroup] = useState<string>('Grupo A');
   const [matches, setMatches] = useState<Match[]>([]);
   const [predictions, setPredictions] = useState<Record<string, Prediction>>({});
@@ -173,10 +527,13 @@ export function Predictions() {
     third: '',
     fourth: ''
   });
-  const [loading, setLoading] = useState(true);
+  const [matchesLoading, setMatchesLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(true);
+  const loading = matchesLoading || dataLoading;
   const [saving, setSaving] = useState<string | null>(null);
   const [globalSaving, setGlobalSaving] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
+  const [showRules, setShowRules] = useState(false);
 
   // Group standup state
   const GROUPS_LIST = [
@@ -190,6 +547,10 @@ export function Predictions() {
     const unsubMatches = onSnapshot(q, (snapshot) => {
       const dbMatches = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Match));
       setMatches(dbMatches);
+      setMatchesLoading(false);
+    }, (error) => {
+      console.error("Error loading real-time matches:", error);
+      setMatchesLoading(false);
     });
 
     // Load user predictions & podium data
@@ -214,39 +575,44 @@ export function Predictions() {
         } catch (error) {
           console.error("Error loading predictions/podium:", error);
         } finally {
-          setLoading(false);
+          setDataLoading(false);
         }
       };
       loadData();
     } else {
-      setLoading(false);
+      setDataLoading(false);
     }
 
     return () => unsubMatches();
   }, [user]);
 
   // Self-heal / Seed system:
-  // If the admin/system loaded matches list is completely empty or mismatching, we seed the correct 72 tournament matches
+  // Seeding the 72 tournament matches atomic batch write
   const handleSeedOfficialMatches = async () => {
     setIsSeeding(true);
     try {
-      // 1. Delete any old matches
+      // 1. Get all matches
       const querySnap = await getDocs(collection(db, 'matches'));
-      for (const d of querySnap.docs) {
-        // True deletion instead of empty objects
-        await deleteDoc(doc(db, 'matches', d.id));
-      }
-
-      // 2. Add all official World Cup 2026 Matches
-      const promises = OFFICIAL_2026_MATCHES_SEED.map((match, idx) => {
-        const matchId = `match_2026_${idx + 1}`;
-        return setDoc(doc(db, 'matches', matchId), match);
+      const batch = writeBatch(db);
+      
+      // Delete old ones inside the atomic batch
+      querySnap.docs.forEach(d => {
+        batch.delete(doc(db, 'matches', d.id));
       });
-      await Promise.all(promises);
-      alert('¡Calendario Oficial de 72 partidos de Fase de Grupos sembrado correctamente en la base de datos!');
+
+      // 2. Add all official World Cup 2026 Matches inside the batch
+      OFFICIAL_2026_MATCHES_SEED.forEach((match, idx) => {
+        const matchId = `match_2026_${idx + 1}`;
+        batch.set(doc(db, 'matches', matchId), match);
+      });
+
+      // Commit atomically to prevent dirty reads or vanishing lists
+      await batch.commit();
+
+      alert('¡Fase de grupos de 72 partidos del Mundial 2026 sembrada correctamente de forma atómica en la base de datos!');
     } catch (error) {
-      console.error("Error seeding matches:", error);
-      alert('Error al sembrar el calendario.');
+      console.error("Error seeding matches with batch:", error);
+      alert('Error al sembrar el calendario: ' + (error instanceof Error ? error.message : String(error)));
     } finally {
       setIsSeeding(false);
     }
@@ -316,6 +682,7 @@ export function Predictions() {
         matchId,
         scoreA: Number(pred.scoreA),
         scoreB: Number(pred.scoreB),
+        winnerId: (pred as any).winnerId || null,
         updatedAt: new Date().toISOString()
       }, { merge: true });
       setTimeout(() => setSaving(null), 1000);
@@ -352,6 +719,7 @@ export function Predictions() {
             matchId,
             scoreA: Number(pred.scoreA),
             scoreB: Number(pred.scoreB),
+            winnerId: (pred as any).winnerId || null,
             updatedAt: new Date().toISOString()
           }, { merge: true });
         });
@@ -381,6 +749,16 @@ export function Predictions() {
       <div className="flex flex-col items-center justify-center py-40 gap-3">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
         <p className="text-sm font-bold text-slate-500">Cargando pronósticos...</p>
+      </div>
+    );
+  }
+
+  if (isSeeding) {
+    return (
+      <div className="flex flex-col items-center justify-center py-40 gap-4">
+        <RefreshCw className="animate-spin h-12 w-12 text-yellow-600" />
+        <p className="text-lg font-black text-slate-700">Sembrando el Calendario Oficial de 72 partidos...</p>
+        <p className="text-xs text-slate-400">Por favor, espera a que se complete para evitar cualquier parpadeo de datos.</p>
       </div>
     );
   }
@@ -484,6 +862,228 @@ export function Predictions() {
 
   const groupStandings = calculateGroupStandings();
 
+  const calculateAllGroupStandings = () => {
+    const GROUPS_LIST = [
+      'Grupo A', 'Grupo B', 'Grupo C', 'Grupo D', 'Grupo E', 'Grupo F',
+      'Grupo G', 'Grupo H', 'Grupo I', 'Grupo J', 'Grupo K', 'Grupo L'
+    ];
+
+    const allStandings: Record<string, any[]> = {};
+
+    GROUPS_LIST.forEach(groupName => {
+      const groupMatches = matches.filter(m => m.group === groupName);
+      const teamsInGroupSet = new Set<string>();
+      groupMatches.forEach(m => {
+        teamsInGroupSet.add(m.teamA);
+        teamsInGroupSet.add(m.teamB);
+      });
+
+      const standings: Record<string, {
+        name: string;
+        pj: number;
+        pg: number;
+        pe: number;
+        pp: number;
+        gf: number;
+        gc: number;
+        pts: number;
+      }> = {};
+
+      teamsInGroupSet.forEach(teamName => {
+        standings[teamName] = {
+          name: teamName,
+          pj: 0,
+          pg: 0,
+          pe: 0,
+          pp: 0,
+          gf: 0,
+          gc: 0,
+          pts: 0
+        };
+      });
+
+      groupMatches.forEach(m => {
+        const pred = predictions[m.id];
+        const isFinished = m.status === 'finished';
+
+        let sA: number | undefined;
+        let sB: number | undefined;
+
+        if (isFinished) {
+          sA = m.scoreA;
+          sB = m.scoreB;
+        } else if (pred && pred.scoreA !== undefined && pred.scoreB !== undefined) {
+          sA = Number(pred.scoreA);
+          sB = Number(pred.scoreB);
+        }
+
+        if (sA !== undefined && sB !== undefined && standings[m.teamA] && standings[m.teamB]) {
+          const teamAObj = standings[m.teamA];
+          const teamBObj = standings[m.teamB];
+
+          teamAObj.pj++;
+          teamBObj.pj++;
+
+          teamAObj.gf += sA;
+          teamAObj.gc += sB;
+
+          teamBObj.gf += sB;
+          teamBObj.gc += sA;
+
+          if (sA > sB) {
+            teamAObj.pg++;
+            teamAObj.pts += 3;
+            teamBObj.pp++;
+          } else if (sA < sB) {
+            teamBObj.pg++;
+            teamBObj.pts += 3;
+            teamAObj.pp++;
+          } else {
+            teamAObj.pe++;
+            teamAObj.pts += 1;
+            teamBObj.pe++;
+            teamBObj.pts += 1;
+          }
+        }
+      });
+
+      allStandings[groupName] = Object.values(standings).sort((a, b) => {
+        if (b.pts !== a.pts) return b.pts - a.pts;
+        const difB = b.gf - b.gc;
+        const difA = a.gf - a.gc;
+        if (difB !== difA) return difB - difA;
+        if (b.gf !== a.gf) return b.gf - a.gf;
+        return a.name.localeCompare(b.name);
+      });
+    });
+
+    return allStandings;
+  };
+
+  const getThirdPlacedTeamsStats = () => {
+    const groupStandingsAll = calculateAllGroupStandings();
+    const thirds: any[] = [];
+    Object.entries(groupStandingsAll).forEach(([groupName, teams]) => {
+      if (teams[2]) {
+        thirds.push({
+          ...teams[2],
+          group: groupName
+        });
+      } else {
+        thirds.push({
+          name: `3° ${groupName}`,
+          group: groupName,
+          pj: 0,
+          pg: 0,
+          pe: 0,
+          pp: 0,
+          gf: 0,
+          gc: 0,
+          pts: 0
+        });
+      }
+    });
+
+    return thirds.sort((a, b) => {
+      if (b.pts !== a.pts) return b.pts - a.pts;
+      const difB = b.gf - b.gc;
+      const difA = a.gf - a.gc;
+      if (difB !== difA) return difB - difA;
+      if (b.gf !== a.gf) return b.gf - a.gf;
+      return a.group.localeCompare(b.group);
+    });
+  };
+
+  const getMatchWinnerObj = (matchId: string, teamA: string, teamB: string) => {
+    const pred = predictions[matchId];
+    if (!pred || pred.scoreA === undefined || pred.scoreB === undefined) {
+      return { winner: 'Pendiente', loser: 'Pendiente', winnerTeam: null };
+    }
+    const sA = Number(pred.scoreA);
+    const sB = Number(pred.scoreB);
+    if (sA > sB) return { winner: teamA, loser: teamB, winnerTeam: 'A' };
+    if (sA < sB) return { winner: teamB, loser: teamA, winnerTeam: 'B' };
+    
+    const winnerId = (pred as any).winnerId;
+    if (winnerId === 'A') return { winner: teamA, loser: teamB, winnerTeam: 'A' };
+    if (winnerId === 'B') return { winner: teamB, loser: teamA, winnerTeam: 'B' };
+    
+    return { winner: teamA, loser: teamB, winnerTeam: 'A' }; // Default fallback
+  };
+
+  const handleWinnerChange = (matchId: string, winnerId: 'A' | 'B') => {
+    if (isLocked) return;
+    setPredictions(prev => {
+      const current = prev[matchId] || { userId: user!.uid, matchId, scoreA: 0, scoreB: 0 };
+      return {
+        ...prev,
+        [matchId]: {
+          ...current,
+          winnerId
+        }
+      };
+    });
+  };
+
+  const resolveTeamName = (
+    source: any, 
+    groupStandingsAll: Record<string, any[]>, 
+    top8Thirds: any[]
+  ): { name: string; flag: string } => {
+    if (!source) return { name: 'Pendiente', flag: '🏳️' };
+    
+    if (source.type === 'group') {
+      const teams = groupStandingsAll[source.group] || [];
+      const team = teams[source.rank];
+      if (team) {
+        return { name: team.name, flag: TEAM_FLAGS[team.name] || '🏳️' };
+      }
+      return { 
+        name: `${source.rank === 0 ? '1°' : '2°'} ${source.group}`, 
+        flag: '🏳️' 
+      };
+    }
+    
+    if (source.type === 'thirds') {
+      const team = top8Thirds[source.index];
+      if (team) {
+        return { name: team.name, flag: TEAM_FLAGS[team.name] || '🏳️' };
+      }
+      return { 
+        name: `Mejor 3° #${source.index + 1}`, 
+        flag: '🏳️' 
+      };
+    }
+    
+    if (source.type === 'match_winner') {
+      const srcConf = KNOCKOUT_MATCHES_CONFIG.find(c => c.id === source.matchId);
+      if (!srcConf) return { name: 'Ganador ' + source.matchId, flag: '🏳️' };
+      const teamAObj = resolveTeamName(srcConf.teamASource, groupStandingsAll, top8Thirds);
+      const teamBObj = resolveTeamName(srcConf.teamBSource, groupStandingsAll, top8Thirds);
+      
+      const { winner } = getMatchWinnerObj(source.matchId, teamAObj.name, teamBObj.name);
+      return { 
+        name: winner, 
+        flag: TEAM_FLAGS[winner] || '🏳️' 
+      };
+    }
+
+    if (source.type === 'match_loser') {
+      const srcConf = KNOCKOUT_MATCHES_CONFIG.find(c => c.id === source.matchId);
+      if (!srcConf) return { name: 'Perdedor ' + source.matchId, flag: '🏳️' };
+      const teamAObj = resolveTeamName(srcConf.teamASource, groupStandingsAll, top8Thirds);
+      const teamBObj = resolveTeamName(srcConf.teamBSource, groupStandingsAll, top8Thirds);
+      
+      const { loser } = getMatchWinnerObj(source.matchId, teamAObj.name, teamBObj.name);
+      return { 
+        name: loser, 
+        flag: TEAM_FLAGS[loser] || '🏳️' 
+      };
+    }
+
+    return { name: 'Pendiente', flag: '🏳️' };
+  };
+
   return (
     <div className="space-y-10 pb-20">
       {/* HEADER SECTION */}
@@ -502,14 +1102,14 @@ export function Predictions() {
         </div>
         
         <div className="flex flex-col sm:flex-row gap-3 relative z-10">
-          {matches.length === 0 && (
+          {profile?.role === 'admin' && matches.length !== 72 && (
             <button
               onClick={handleSeedOfficialMatches}
               disabled={isSeeding}
-              className="flex items-center justify-center gap-2 px-5 py-3.5 bg-yellow-600 hover:bg-yellow-700 text-white rounded-2xl font-bold transition-all text-sm active:scale-95 disabled:opacity-50"
+              className="flex items-center justify-center gap-2 px-5 py-3.5 bg-amber-600 hover:bg-amber-700 text-white rounded-2xl font-bold transition-all text-sm active:scale-95 disabled:opacity-50"
             >
               <RefreshCw className="w-4.5 h-4.5 animate-spin-slow" />
-              Sembrar Calendario 2026
+              Sembrar Calendario ({matches.length}/72)
             </button>
           )}
 
@@ -524,32 +1124,167 @@ export function Predictions() {
         </div>
       </header>
 
+      {/* SECCIÓN DE INSTRUCCIONES Y REGLAS (COLAPSABLE) */}
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden transition-all">
+        <button
+          onClick={() => setShowRules(!showRules)}
+          className="w-full px-6 py-4 flex items-center justify-between bg-slate-50 hover:bg-slate-100 transition-colors text-left"
+        >
+          <div className="flex items-center gap-2 text-slate-800 font-black font-display text-sm">
+            <Info className="w-5 h-5 text-indigo-600 animate-pulse" />
+            <span>📌 Guía del Juego: ¿Cómo registrar tus Pronósticos y sumar Puntos?</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500 font-semibold hidden sm:inline">
+              {showRules ? "Ocultar guía" : "Ver reglas, puntajes e instrucciones"}
+            </span>
+            {showRules ? (
+              <ChevronUp className="w-5 h-5 text-slate-600" />
+            ) : (
+              <ChevronDown className="w-5 h-5 text-slate-600" />
+            )}
+          </div>
+        </button>
+
+        <AnimatePresence>
+          {showRules && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.25 }}
+              className="border-t border-slate-100"
+            >
+              <div className="p-6 sm:p-8 space-y-6 text-slate-600 text-sm leading-relaxed">
+                
+                {/* GRID DE REGLAS DE PUNTUACIÓN */}
+                <div className="grid gap-6 md:grid-cols-3">
+                  
+                  {/* CARD 1: FASE DE GRUPOS */}
+                  <div className="bg-indigo-50/40 border border-indigo-100/70 p-5 rounded-2xl space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Trophy className="w-5 h-5 text-indigo-600" />
+                      <h4 className="font-black text-slate-800 font-display">1. Fase de Grupos</h4>
+                    </div>
+                    <ul className="space-y-2 text-xs text-slate-600 list-disc list-inside">
+                      <li><strong className="text-indigo-900 font-extrabold">Acierto Exacto (8 Ptos):</strong> Aciertas el ganador/empate y la cantidad exacta de goles de ambos equipos.</li>
+                      <li><strong className="text-indigo-900 font-extrabold">Acierto Parcial (6 Ptos):</strong> Aciertas ganador/empate y los goles de uno de los equipos.</li>
+                      <li><strong className="text-indigo-900 font-extrabold">Acierto Básico (5 Ptos):</strong> Aciertas solo el ganador o empate, pero no los goles de ninguno.</li>
+                    </ul>
+                  </div>
+
+                  {/* CARD 2: CUADRO DE HONOR */}
+                  <div className="bg-amber-50/40 border border-amber-100 p-5 rounded-2xl space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Medal className="w-5 h-5 text-amber-600" />
+                      <h4 className="font-black text-slate-800 font-display">2. Cuadro de Honor</h4>
+                    </div>
+                    <p className="text-xs text-slate-600">
+                      Pronostica en la pestaña <span className="font-bold">"Cuadro de Honor"</span> tus selecciones de medallas para el final del campeonato.
+                    </p>
+                    <ul className="space-y-1.5 text-xs text-slate-600 list-disc list-inside">
+                      <li><strong className="text-amber-800 font-bold">Campeón:</strong> +10 Ptos directos si aciertas.</li>
+                      <li><strong className="text-amber-800 font-bold">Subcampeón:</strong> +10 Ptos directos.</li>
+                      <li><strong className="text-amber-800 font-bold">Tercero y Cuarto:</strong> +10 Ptos cada uno.</li>
+                    </ul>
+                  </div>
+
+                  {/* CARD 3: PARLEY Y NOVEDADES */}
+                  <div className="bg-emerald-50/40 border border-emerald-100 p-5 rounded-2xl space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-5 h-5 text-emerald-600" />
+                      <h4 className="font-black text-slate-800 font-display">3. Super Parley Especial</h4>
+                    </div>
+                    <p className="text-xs text-slate-600">
+                      ¿Crees saber de estadísticas del torneo? Completa los pronósticos estadísticos en el menú superior con el botón de la pestaña <span className="font-bold text-indigo-650">Parley</span>.
+                    </p>
+                    <ul className="space-y-1 text-xs text-slate-600 list-disc list-inside">
+                      <li>Preguntas como <strong className="text-emerald-800 font-bold">monto de goles totales, tarjetas, penales y goleador</strong>.</li>
+                      <li>Cada pregunta del Parley acertada te dará <strong className="text-emerald-800 font-black">+10 Puntos</strong> extras.</li>
+                    </ul>
+                  </div>
+
+                </div>
+
+                {/* USER INSTRUCTION EXPLANATION */}
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl grid md:grid-cols-2 gap-6">
+                  
+                  {/* COL 1: CÓMO GUARDAR */}
+                  <div className="space-y-1.5">
+                    <span className="text-[10px] bg-slate-200 text-slate-700 px-2.5 py-0.5 rounded-full font-black tracking-wider uppercase block w-max">
+                      Método de Registro
+                    </span>
+                    <h5 className="font-bold text-slate-800 text-xs">Puedes guardar tus pronósticos de dos maneras:</h5>
+                    <ul className="list-decimal list-inside space-y-1 text-xs text-slate-500 leading-relaxed">
+                      <li>Presionando <strong className="text-slate-800">"Guardar"</strong> de manera individual en cada tarjeta de partido según cambies marcadores.</li>
+                      <li>Rellenando varios partidos de un grupo y presionando el gran botón flotante de abajo <strong className="text-indigo-600">"Guardar Todos Mis Pronósticos"</strong>. ¡Es súper rápido y amigable!</li>
+                    </ul>
+                  </div>
+
+                  {/* COL 2: ESCALABILIDAD EN GRUPO */}
+                  <div className="space-y-1.5">
+                    <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2.5 py-0.5 rounded-full font-black tracking-wider uppercase block w-max">
+                      Funcionamiento Multiusuario
+                    </span>
+                    <h5 className="font-bold text-slate-800 text-xs">¿Cómo funciona con múltiples participantes?</h5>
+                    <p className="text-xs text-slate-500 leading-relaxed">
+                      ¡Este sistema está listo para hospedar a todos tus amigos y familiares! Cada participante inicia sesión con su cuenta y registra sus propios marcadores de manera <strong className="text-slate-800">100% independiente y privada</strong>. 
+                      Los puntos se calculan automáticamente de forma personalizada cuando el administrador carga los resultados reales. Puedes ver el avance de todos en la <strong className="text-indigo-600">Tabla de Posiciones (Dashboard)</strong>.
+                    </p>
+                  </div>
+
+                </div>
+
+                {/* WARNING DEADLINE */}
+                <div className="flex items-center gap-3 p-3 bg-rose-50 border border-rose-100/50 text-rose-800 rounded-xl text-xs">
+                  <Clock className="w-5 h-5 text-rose-500 flex-shrink-0 animate-pulse" />
+                  <p className="font-medium">
+                    <strong className="text-rose-900 font-extrabold">🚨 FECHA LÍMITE DE REGISTRO:</strong> Todos los pronósticos se cerrarán de forma automática una vez comience el primer partido del mundial. Asegúrate de guardar todo antes del inicio oficial.
+                  </p>
+                </div>
+
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
       {/* CORE TAB SWITCHER */}
-      <div className="flex bg-slate-100 p-1.5 rounded-2xl max-w-md mx-auto shadow-inner">
+      <div className="flex bg-slate-100 p-1.5 rounded-2xl max-w-lg mx-auto shadow-inner">
         <button
           onClick={() => setActiveTab('grupos')}
-          className={`flex-1 py-3 text-center rounded-xl font-black transition-all text-sm ${
+          className={`flex-1 py-3 text-center rounded-xl font-black transition-all text-xs sm:text-sm ${
             activeTab === 'grupos' 
               ? 'bg-white text-indigo-600 shadow-sm' 
               : 'text-slate-500 hover:text-slate-800'
           }`}
         >
-          🏆 Fase de Grupos
+          🏆 Grupos
+        </button>
+        <button
+          onClick={() => setActiveTab('eliminatorias')}
+          className={`flex-1 py-3 text-center rounded-xl font-black transition-all text-xs sm:text-sm ${
+            activeTab === 'eliminatorias' 
+              ? 'bg-white text-indigo-600 shadow-sm' 
+              : 'text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          ⚡ Playoffs
         </button>
         <button
           onClick={() => setActiveTab('cuadro')}
-          className={`flex-1 py-3 text-center rounded-xl font-black transition-all text-sm ${
+          className={`flex-1 py-3 text-center rounded-xl font-black transition-all text-xs sm:text-sm ${
             activeTab === 'cuadro' 
               ? 'bg-white text-indigo-600 shadow-sm' 
               : 'text-slate-500 hover:text-slate-800'
           }`}
         >
-          🏅 Cuadro de Honor
+          🏅 Podio
         </button>
       </div>
 
       <AnimatePresence mode="wait">
-        {activeTab === 'grupos' ? (
+        {activeTab === 'grupos' && (
           <motion.div 
             key="grupos-panel"
             initial={{ opacity: 0, y: 15 }}
@@ -595,11 +1330,26 @@ export function Predictions() {
                 </div>
 
                 {groupMatches.length === 0 ? (
-                  <div className="bg-white p-12 rounded-2xl border border-slate-200 text-center space-y-4">
-                    <AlertCircle className="w-12 h-12 text-yellow-500 mx-auto" />
-                    <div>
+                  <div className="bg-white p-12 rounded-2xl border border-slate-200 text-center space-y-5">
+                    <AlertCircle className="w-12 h-12 text-amber-500 mx-auto" />
+                    <div className="space-y-4">
                       <p className="font-bold text-slate-700 text-lg">No se han cargado encuentros para este grupo</p>
-                      <p className="text-sm text-slate-400 max-w-sm mx-auto mt-1">Siembre el fixture de 72 partidos del mundial 2026 usando el botón en la cabecera.</p>
+                      <p className="text-sm text-slate-400 max-w-sm mx-auto mt-1">
+                        {profile?.role === 'admin' 
+                          ? `Tu base de datos contiene ${matches.length} partidos (se necesitan exatamente 72 para el Mundial 2026). Haz clic en el botón de abajo para sembrarlos instantáneamente.`
+                          : "Por favor, espera a que el administrador publique el calendario de partidos del Mundial."
+                        }
+                      </p>
+                      {profile?.role === 'admin' && (
+                        <button
+                          onClick={handleSeedOfficialMatches}
+                          disabled={isSeeding}
+                          className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold transition-all text-xs active:scale-95 disabled:opacity-50"
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                          Sembrar 72 Partidos Oficiales (Fase de Grupos)
+                        </button>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -810,7 +1560,320 @@ export function Predictions() {
 
             </div>
           </motion.div>
-        ) : (
+        )}
+
+        {activeTab === 'eliminatorias' && (
+          <motion.div
+            key="eliminatorias-panel"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            className="space-y-8"
+          >
+            {/* SELECT PLAYOFF PHASE */}
+            <div className="flex flex-wrap bg-white border border-slate-200 p-2.5 rounded-2xl shadow-sm gap-2.5 justify-center">
+              {[
+                { id: 'dieciseisavos', label: 'Dieciseisavos de Final' },
+                { id: 'octavos', label: 'Octavos de Final' },
+                { id: 'cuartos', label: 'Cuartos de Final' },
+                { id: 'semis_final', label: 'Semis y Finales' }
+              ].map(phase => (
+                <button
+                  key={phase.id}
+                  onClick={() => setSelectedPhase(phase.id as any)}
+                  className={`px-5 py-2.5 rounded-xl font-black text-xs sm:text-sm transition-all focus:outline-none ${
+                    selectedPhase === phase.id
+                      ? 'bg-indigo-600 text-white shadow-md'
+                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/50'
+                  }`}
+                >
+                  {phase.label}
+                </button>
+              ))}
+            </div>
+
+            {/* TWO COLUMN PLAYOFF GRID */}
+            <div className="grid lg:grid-cols-3 gap-8 items-start">
+              
+              {/* PLAYOFF MATCHES (2/3 width) */}
+              <div className="lg:col-span-2 space-y-5">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-5 h-5 text-indigo-600" />
+                    <h3 className="text-lg font-black font-display text-slate-800 uppercase tracking-tight">
+                      Pronósticos: {selectedPhase === 'dieciseisavos' ? 'Dieciseisavos' : selectedPhase === 'octavos' ? 'Octavos' : selectedPhase === 'cuartos' ? 'Cuartos' : 'Semifinales y Finales'}
+                    </h3>
+                  </div>
+                  <span className="text-2xs font-extrabold bg-slate-100 text-slate-500 px-2.5 py-1 rounded-full border border-slate-200 font-mono">
+                    {KNOCKOUT_MATCHES_CONFIG.filter(cfg => {
+                      if (selectedPhase === 'semis_final') {
+                        return cfg.phase === 'semifinales' || cfg.phase === 'tercer_lugar' || cfg.phase === 'final';
+                      }
+                      return cfg.phase === selectedPhase;
+                    }).length} partidos
+                  </span>
+                </div>
+
+                <div className="space-y-4">
+                  {(() => {
+                    const groupStandingsAll = calculateAllGroupStandings();
+                    const top8Thirds = getThirdPlacedTeamsStats().slice(0, 8);
+
+                    const filteredKoConfigs = KNOCKOUT_MATCHES_CONFIG.filter(cfg => {
+                      if (selectedPhase === 'semis_final') {
+                        return cfg.phase === 'semifinales' || cfg.phase === 'tercer_lugar' || cfg.phase === 'final';
+                      }
+                      return cfg.phase === selectedPhase;
+                    });
+
+                    return filteredKoConfigs.map(cfg => {
+                      const teamAObj = resolveTeamName(cfg.teamASource, groupStandingsAll, top8Thirds);
+                      const teamBObj = resolveTeamName(cfg.teamBSource, groupStandingsAll, top8Thirds);
+                      const pred = predictions[cfg.id] || { scoreA: undefined, scoreB: undefined };
+
+                      return (
+                        <div 
+                          key={cfg.id} 
+                          className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200 shadow-sm transition-all hover:shadow-md space-y-4"
+                        >
+                          {/* Match Header */}
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                            <div className="flex items-center gap-2">
+                              <span className="text-2xs font-black bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full uppercase tracking-wider border border-indigo-100 font-mono font-sans">
+                                {cfg.label}
+                              </span>
+                              <span className="text-2xs font-black bg-slate-50 text-slate-500 px-2.5 py-1 rounded-full uppercase tracking-wider font-mono font-sans">
+                                {cfg.phase.toUpperCase()}
+                              </span>
+                            </div>
+                            <div className="flex flex-col sm:items-end text-3xs sm:text-2xs text-slate-400 font-bold font-sans">
+                              <span className="flex items-center gap-1 font-mono">
+                                <Clock className="w-3.5 h-3.5 text-indigo-400" />
+                                {cfg.dateStr} — {cfg.timeStr} hrs
+                              </span>
+                              <span className="truncate max-w-[210px]">{cfg.stadium}</span>
+                            </div>
+                          </div>
+
+                          {/* Match Row */}
+                          <div className="grid grid-cols-7 items-center gap-2 py-1">
+                            {/* Team A */}
+                            <div className="col-span-3 flex items-center justify-end gap-3 text-right">
+                              <span className="text-xs sm:text-sm text-slate-700 font-extrabold max-w-[120px] truncate uppercase tracking-tight font-sans">
+                                {teamAObj.name}
+                              </span>
+                              <span className="text-2xl sm:text-3xl filter drop-shadow-sm select-none shrink-0 font-sans">
+                                {teamAObj.flag}
+                              </span>
+                            </div>
+
+                            {/* Inputs */}
+                            <div className="col-span-1 flex items-center justify-center gap-1 bg-slate-50 py-1.5 px-2 rounded-2xl border border-slate-100">
+                              <input
+                                type="tel"
+                                maxLength={2}
+                                disabled={isLocked}
+                                value={pred.scoreA ?? ''}
+                                onChange={e => handleScoreChange(cfg.id, 'A', e.target.value)}
+                                className="w-9 h-9 bg-white border border-slate-250 hover:bg-slate-50 rounded-xl text-center font-black text-base focus:outline-none focus:ring-3 focus:ring-indigo-100 focus:border-indigo-500 transition-all text-slate-800 disabled:opacity-50"
+                                placeholder="-"
+                              />
+                              <span className="text-slate-350 font-black text-3xs select-none">vs</span>
+                              <input
+                                type="tel"
+                                maxLength={2}
+                                disabled={isLocked}
+                                value={pred.scoreB ?? ''}
+                                onChange={e => handleScoreChange(cfg.id, 'B', e.target.value)}
+                                className="w-9 h-9 bg-white border border-slate-250 hover:bg-slate-50 rounded-xl text-center font-black text-base focus:outline-none focus:ring-3 focus:ring-indigo-100 focus:border-indigo-500 transition-all text-slate-800 disabled:opacity-50"
+                                placeholder="-"
+                              />
+                            </div>
+
+                            {/* Team B */}
+                            <div className="col-span-3 flex items-center justify-start gap-3">
+                              <span className="text-2xl sm:text-3xl filter drop-shadow-sm select-none shrink-0 font-sans">
+                                {teamBObj.flag}
+                              </span>
+                              <span className="text-xs sm:text-sm text-slate-700 font-extrabold max-w-[120px] truncate uppercase tracking-tight font-sans">
+                                {teamBObj.name}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Tiebreaker (Tie score validation) */}
+                          {pred.scoreA !== undefined && pred.scoreB !== undefined && Number(pred.scoreA) === Number(pred.scoreB) && (
+                            <div className="p-3 bg-amber-50/60 border border-amber-100 rounded-2xl flex flex-col items-center gap-2 text-center animate-fade-in font-sans">
+                              <span className="text-2xs font-black text-amber-800 flex items-center gap-1.5 uppercase tracking-wider">
+                                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                                Resultado Empatado — ¿Quién avanza a la siguiente ronda?
+                              </span>
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  disabled={isLocked}
+                                  onClick={() => handleWinnerChange(cfg.id, 'A')}
+                                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all border ${
+                                    (pred as any).winnerId === 'A'
+                                      ? 'bg-amber-600 text-white border-amber-600 shadow-sm shadow-amber-200 scale-102 font-sans'
+                                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 font-sans'
+                                  }`}
+                                >
+                                  <span>{teamAObj.flag}</span>
+                                  <span>Avanza {teamAObj.name}</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={isLocked}
+                                  onClick={() => handleWinnerChange(cfg.id, 'B')}
+                                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all border ${
+                                    (pred as any).winnerId === 'B'
+                                      ? 'bg-amber-600 text-white border-amber-600 shadow-sm shadow-amber-200 scale-102 font-sans'
+                                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 font-sans'
+                                  }`}
+                                >
+                                  <span>{teamBObj.flag}</span>
+                                  <span>Avanza {teamBObj.name}</span>
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Action footer */}
+                          <div className="flex justify-between items-center bg-slate-50 p-3 rounded-2xl border border-slate-100 font-sans">
+                            <div className="text-[11px] font-bold font-sans">
+                              {pred.scoreA !== undefined && pred.scoreB !== undefined ? (
+                                <span className="text-emerald-700 font-extrabold flex items-center gap-1 uppercase tracking-tight">
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                  Clasifica: {getMatchWinnerObj(cfg.id, teamAObj.name, teamBObj.name).winner}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 italic">Escribe arriba tu pronóstico</span>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => savePrediction(cfg.id)}
+                              disabled={saving === cfg.id || isLocked}
+                              className={`px-4 py-1.5 rounded-lg font-black text-xs transition-all flex items-center gap-1.5 ${
+                                isLocked ? 'bg-slate-50 text-slate-300 font-medium cursor-not-allowed border border-slate-150' :
+                                saving === cfg.id ? 'bg-emerald-600 text-white shadow-sm' :
+                                pred.scoreA !== undefined && pred.scoreB !== undefined
+                                  ? 'bg-slate-100 text-slate-750 hover:bg-indigo-600 hover:text-white'
+                                  : 'bg-indigo-50 text-indigo-600 border border-transparent font-sans'
+                              }`}
+                            >
+                              {saving === cfg.id ? (
+                                <>
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  <span>Guardado</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Save className="w-3.5 h-3.5" />
+                                  <span>Guardar</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+
+              {/* STICKY STANDINGS PANEL (1/3 width, Best Thirds Standings) */}
+              <div className="lg:col-span-1 space-y-6">
+                <div className="flex items-center gap-2 pb-2 border-b border-slate-200">
+                  <BarChart2 className="w-5 h-5 text-indigo-600 font-sans" />
+                  <h3 className="text-lg font-black font-display text-slate-800 font-sans">Mejores Terceros</h3>
+                </div>
+
+                <div className="bg-slate-950 text-slate-100 rounded-3xl p-5 shadow-xl border border-slate-850 space-y-4">
+                  <div className="space-y-1">
+                    <h4 className="text-base font-black text-white flex items-center gap-1.5 font-sans">
+                      <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
+                      Tabla General 3°s
+                    </h4>
+                    <p className="text-2xs text-slate-400 font-medium font-sans">
+                      Se actualiza automáticamente con tus pronósticos del grupo. Los top 8 mejores terceros avanzan de ronda.
+                    </p>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-2xs border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-800 text-slate-500 uppercase font-black">
+                          <th className="py-2.5 text-center">Pos</th>
+                          <th className="py-2.5">País</th>
+                          <th className="py-2.5 text-center px-1">Pts</th>
+                          <th className="py-2.5 text-center px-1">DG</th>
+                          <th className="py-2.5 text-center px-1">GF</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-900/65 font-sans">
+                        {getThirdPlacedTeamsStats().map((team, idx) => {
+                          const qualifies = idx < 8;
+                          const flag = TEAM_FLAGS[team.name] || '🏳️';
+                          const dg = team.gf - team.gc;
+                          const formattedDg = dg > 0 ? `+${dg}` : dg;
+
+                          return (
+                            <tr 
+                              key={team.name}
+                              className={`transition-colors py-2 ${
+                                qualifies ? 'bg-emerald-500/5' : 'opacity-65'
+                              }`}
+                            >
+                              <td className="py-2.5 text-center">
+                                <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-black ${
+                                  qualifies 
+                                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                                    : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                                }`}>
+                                  {idx + 1}
+                                </span>
+                              </td>
+                              <td className="py-2.5 font-bold uppercase truncate max-w-[90px] font-sans">
+                                <span className="inline-block mr-1.5 text-sm filter drop-shadow-sm select-none">{flag}</span>
+                                <span className="text-[10px] sm:text-xs text-slate-220 tracking-tight font-sans">{team.name}</span>
+                              </td>
+                              <td className="py-2.5 text-center font-black font-mono text-white text-sm px-1">{team.pts}</td>
+                              <td className={`py-2.5 text-center font-bold font-mono px-1 ${
+                                dg > 0 ? 'text-emerald-400' : dg < 0 ? 'text-rose-400' : 'text-slate-500'
+                              }`}>
+                                {formattedDg}
+                              </td>
+                              <td className="py-2.5 text-center font-bold font-mono text-slate-400 px-1">{team.gf}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 pt-2 text-2xs border-t border-slate-800 text-slate-405 select-none font-sans mt-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block shrink-0" />
+                    <span>Zonas Verdes avanzan a Dieciseisavos</span>
+                  </div>
+                </div>
+
+                <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-xl text-xs text-indigo-850 space-y-1.5 font-sans">
+                  <p className="font-extrabold flex items-center gap-1 text-indigo-900 font-sans">
+                    <CheckCircle2 className="w-4 h-4 text-indigo-600" />
+                    Propagación Automática
+                  </p>
+                  <p className="text-indigo-700 leading-relaxed text-2xs text-justify">
+                    El simulador determina los cruces de playoffs basándose fielmente en tus posiciones mundialistas y la tabla general de mejores terceros de la FIFA.
+                  </p>
+                </div>
+              </div>
+
+            </div>
+          </motion.div>
+        )}
+
+        {activeTab === 'cuadro' && (
           <motion.div 
             key="cuadro-panel"
             initial={{ opacity: 0, y: 15 }}

@@ -39,16 +39,30 @@ export function Landing() {
           </div>
         </div>
 
-        {!user && (
-          <div className="pt-10">
+        <div className="pt-10 flex flex-col sm:flex-row gap-4 justify-center items-center">
+          {user ? (
+            <Link 
+              to="/predictions"
+              className="px-8 py-4 bg-indigo-600 text-white rounded-xl font-bold text-base hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all active:scale-95 inline-block"
+            >
+              Ir a mis Pronósticos
+            </Link>
+          ) : (
             <Link 
               to="/auth"
-              className="px-8 py-4 bg-indigo-600 text-white rounded-xl font-bold text-lg hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all active:scale-95 inline-block"
+              className="px-8 py-4 bg-indigo-600 text-white rounded-xl font-bold text-base hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all active:scale-95 inline-block"
             >
-              Comenzar ahora
+              Comenzar a Jugar
             </Link>
-          </div>
-        )}
+          )}
+          
+          <Link 
+            to="/rules"
+            className="px-8 py-4 bg-white border border-slate-205 text-slate-705 rounded-xl font-bold text-base hover:bg-slate-50 transition-all active:scale-95 inline-block shadow-sm"
+          >
+            📋 Ver Reglas e Instrucciones
+          </Link>
+        </div>
       </motion.div>
     </div>
   );

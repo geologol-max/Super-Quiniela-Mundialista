@@ -4,8 +4,8 @@ import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { useDeadline } from '../components/CountdownBanner';
 import { ParleyQuestion, ParleyAnswer } from '../types';
-import { HelpCircle, Save, CheckCircle2, AlertCircle, Trophy, Loader2 } from 'lucide-react';
-import { motion } from 'motion/react';
+import { HelpCircle, Save, CheckCircle2, AlertCircle, Trophy, Loader2, Info, ChevronDown, ChevronUp, Clock, Sparkles } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 
 export const WORLD_CUP_TEAMS = [
   "Alemania", "Arabia Saudita", "Argelia", "Argentina", "Australia", "Austria", 
@@ -37,6 +37,7 @@ export function Parley() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [globalSaving, setGlobalSaving] = useState(false);
+  const [showRules, setShowRules] = useState(false);
 
   useEffect(() => {
     const loadAll = async () => {
@@ -162,6 +163,84 @@ export function Parley() {
           </button>
         </div>
       </header>
+
+      {/* SECCIÓN DE INSTRUCCIONES Y REGLAS DE PARLEY (COLAPSABLE) */}
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden transition-all">
+        <button
+          onClick={() => setShowRules(!showRules)}
+          className="w-full px-6 py-4 flex items-center justify-between bg-slate-50 hover:bg-slate-100 transition-colors text-left"
+        >
+          <div className="flex items-center gap-2 text-slate-800 font-black font-display text-sm">
+            <Info className="w-5 h-5 text-indigo-600 animate-pulse" />
+            <span>📌 Guía del Parley: ¿Cómo registrar tus respuestas y sumar Puntos?</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-505 font-semibold hidden sm:inline">
+              {showRules ? "Ocultar guía" : "Ver reglas del Parley, puntajes e instrucciones"}
+            </span>
+            {showRules ? (
+              <ChevronUp className="w-5 h-5 text-slate-600" />
+            ) : (
+              <ChevronDown className="w-5 h-5 text-slate-600" />
+            )}
+          </div>
+        </button>
+
+        <AnimatePresence>
+          {showRules && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.25 }}
+              className="border-t border-slate-100"
+            >
+              <div className="p-6 sm:p-8 space-y-6 text-slate-600 text-sm leading-relaxed">
+                
+                {/* GRID DE REGLAS DE PUNTUACIÓN */}
+                <div className="grid gap-6 md:grid-cols-2">
+                  
+                  {/* CARD 1: REGLAS Y PUNTOS */}
+                  <div className="bg-amber-50/40 border border-amber-100 p-5 rounded-2xl space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Trophy className="w-5 h-5 text-amber-600" />
+                      <h4 className="font-black text-slate-800 font-display">Reglas del Super Parley</h4>
+                    </div>
+                    <ul className="space-y-2 text-xs text-slate-600 list-disc list-inside">
+                      <li>Cada respuesta correcta al finalizar el torneo otorga <strong className="text-amber-800 font-extrabold">+10 Puntos</strong> directos a tu acumulado.</li>
+                      <li>Las opciones involucran estadísticas de alta precisión como: <span className="font-bold">goleador, total de tarjetas amarillas/rojas, total de goles totales, penales anotados y tiros libres</span>.</li>
+                      <li>No se admiten aciertos parciales; la respuesta declarada oficialmente por el Administrador al término del torneo decidirá quién suma de forma perfecta.</li>
+                    </ul>
+                  </div>
+
+                  {/* CARD 2: CÓMO LLENAR Y ESCALABILIDAD */}
+                  <div className="bg-indigo-50/40 border border-indigo-100/70 p-5 rounded-2xl space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-5 h-5 text-indigo-600" />
+                      <h4 className="font-black text-slate-800 font-display">Instrucciones de Llenado y Respaldo</h4>
+                    </div>
+                    <ul className="space-y-1.5 text-xs text-slate-600 list-disc list-inside">
+                      <li><strong className="text-indigo-900 font-bold">Respuesta Individual:</strong> Escribe tu predicción y presiona el botón gris con forma de disco al lado de la pregunta. Esto guardará de manera independiente esa sola respuesta en tiempo real.</li>
+                      <li><strong className="text-indigo-900 font-bold">Llenado Masivo:</strong> Completa las preguntas y haz clic arriba en el botón negro de cabecera <strong className="font-extrabold">"Guardar Todo el Parley"</strong> para guardar todas juntas de manera atómica de una sola vez.</li>
+                      <li><strong className="text-indigo-900 font-bold">Soporte Multiusuario:</strong> ¡Tus predicciones son totalmente seguras, independientes de otros participantes y privadas bajo tu correo!</li>
+                    </ul>
+                  </div>
+
+                </div>
+
+                {/* WARNING DEADLINE */}
+                <div className="flex items-center gap-3 p-3 bg-rose-50 border border-rose-100/50 text-rose-800 rounded-xl text-xs">
+                  <Clock className="w-5 h-5 text-rose-500 flex-shrink-0 animate-pulse" />
+                  <p className="font-medium">
+                    <strong className="text-rose-900 font-extrabold">🚨 CIERRE DE INSCRIPCIÓN:</strong> Al igual que la fase de grupos, no se podrán realizar ni modificar predicciones de Parley una vez inicie el partido inaugural del Mundial. ¡Sé preventivo!
+                  </p>
+                </div>
+
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
 
       <div className="grid gap-6">
         {questions.map((q, idx) => (

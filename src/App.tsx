@@ -6,6 +6,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Predictions } from './pages/Predictions';
 import { Admin } from './pages/Admin';
 import { Parley } from './pages/Parley';
+import { Rules } from './pages/Rules';
 import { useAuth } from './contexts/AuthContext';
 import { CountdownBanner } from './components/CountdownBanner';
 
@@ -30,6 +31,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/auth" element={<Auth />} />
+          <Route path="/rules" element={<Rules />} />
           <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
           <Route path="/predictions" element={<PrivateRoute><Predictions /></PrivateRoute>} />
           <Route path="/parley" element={<PrivateRoute><Parley /></PrivateRoute>} />

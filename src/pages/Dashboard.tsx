@@ -257,7 +257,7 @@ export function Dashboard() {
                 />
               </div>
 
-              {/* PHOTO URL */}
+               {/* PHOTO URL */}
               <div>
                 <label className="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2 flex items-center justify-between">
                   <span>Enlace de Foto (URL externa)</span>
@@ -285,6 +285,19 @@ export function Dashboard() {
                 <p className="text-[10px] text-slate-400 mt-1">
                   Si dejas este enlace vacío, se mostrará el emoji seleccionado a continuación.
                 </p>
+
+                {/* HELP CARD FOR PHOTO UPLOAD */}
+                <div className="mt-4 p-3 bg-indigo-50/50 border border-indigo-150 rounded-xl text-slate-600 text-xs space-y-1.5 font-sans">
+                  <p className="font-bold text-indigo-700 text-[10px] uppercase tracking-widest flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-amber-500 fill-amber-500 animate-pulse" />
+                    Guía rápida para poner tu foto de perfil:
+                  </p>
+                  <ol className="list-decimal list-inside space-y-1 text-slate-600 text-[11px] leading-relaxed">
+                    <li>Sube tu foto favorita gratis en un servicio como <a href="https://postimages.org/" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline font-extrabold inline-flex items-center">postimages.org</a> o Imgur.</li>
+                    <li>Copia el <strong>"Enlace Directo"</strong> (debe terminar en la extensión de la imagen como <code className="font-mono bg-slate-100 px-1 py-0.5 rounded text-red-600">.jpg</code>, <code className="font-mono bg-slate-100 px-1 py-0.5 rounded text-red-600">.png</code>, etc.).</li>
+                    <li>Pega ese enlace arriba y presiona <strong>"Guardar Cambios de Perfil"</strong>. ¡Listo!</li>
+                  </ol>
+                </div>
               </div>
 
               {/* SELECT EMBEDDED EMOJI */}
