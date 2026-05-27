@@ -94,10 +94,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const authUser = userCredential.user;
 
     // Update display name
-    await updateProfile(authUser, { displayName: name });
+    try {
+      await updateProfile(authUser, { displayName: name });
+    } catch (e) {
+      console.error("Error setting displayName:", e);
+    }
 
-    // Send verification email
-    await sendEmailVerification(authUser);
+    // Try to send verification email but don't fail the registration if it fails
+    try {
+      await sendEmailVerification(authUser);
+    } catch (e) {
+      console.warn("Could not send email verification. This is normal if SMTP is not configured in Firebase.", e);
+    }
 
     // Initial profile created by useEffect listener
   };

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
-import { Trophy, Mail, Lock, User, ArrowRight, AlertCircle, Loader2 } from 'lucide-react';
+import { Trophy, Mail, Lock, User, ArrowRight, AlertCircle, Loader2, Eye, EyeOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export function Auth() {
@@ -12,6 +12,7 @@ export function Auth() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [sentVerification, setSentVerification] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const { loginWithGoogle, loginWithEmail, registerWithEmail } = useAuth();
   const navigate = useNavigate();
@@ -27,12 +28,26 @@ export function Auth() {
         navigate('/dashboard');
       } else {
         await registerWithEmail(email, password, name);
-        setSentVerification(true);
+        navigate('/dashboard');
       }
     } catch (err: any) {
-      setError(err.message === 'Firebase: Error (auth/email-already-in-use).' 
-        ? 'Este correo ya está en uso.' 
-        : 'Error al procesar la solicitud. Verifica tus credenciales.');
+      console.error("Authentication error details:", err);
+      const errorCode = err?.code || "";
+      const errorMsg = err?.message || "";
+      
+      if (errorCode === 'auth/email-already-in-use' || errorMsg.includes('email-already-in-use')) {
+        setError('Este correo ya está en uso. Intenta iniciar sesión.');
+      } else if (errorCode === 'auth/weak-password' || errorMsg.includes('weak-password')) {
+        setError('La contraseña es muy débil. Debe tener al menos 6 caracteres.');
+      } else if (errorCode === 'auth/invalid-email' || errorMsg.includes('invalid-email')) {
+        setError('El formato del correo electrónico no es válido.');
+      } else if (errorCode === 'auth/operation-not-allowed' || errorMsg.includes('operation-not-allowed')) {
+        setError('El registro de cuentas nuevas por correo no está habilitado en tu proyecto Firebase. Si eres administrador de este sitio, por favor activa el proveedor "Correo electrónico/contraseña" en la sección de Firebase Auth de tu consola de Firebase.');
+      } else if (errorCode === 'auth/user-not-found' || errorMsg.includes('user-not-found') || errorCode === 'auth/wrong-password' || errorMsg.includes('wrong-password') || errorMsg.includes('invalid-credential')) {
+        setError('Correo o contraseña incorrectos. Por favor, verifícalos.');
+      } else {
+        setError(`Error al procesar la solicitud: ${err.message || errorCode || 'Verifica tus datos e intenta de nuevo.'}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -142,14 +157,22 @@ export function Auth() {
             <div className="relative">
               <Lock className="absolute left-3 top-3.5 w-5 h-5 text-slate-400" />
               <input 
-                type="password"
+                type={showPassword ? "text" : "password"}
                 required
                 minLength={6}
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
-                placeholder="••••••••"
+                className="w-full pl-11 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
+                placeholder={showPassword ? "Contraseña" : "••••••••"}
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-3.5 text-slate-400 hover:text-slate-600 focus:outline-none transition-colors"
+                title={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+              >
+                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              </button>
             </div>
           </div>
 
