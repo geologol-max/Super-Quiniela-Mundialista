@@ -37,14 +37,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           
           unsubscribeProfile = onSnapshot(docRef, async (docSnap) => {
             if (docSnap.exists()) {
-              setProfile(docSnap.data() as UserProfile);
+              const data = docSnap.data() as UserProfile;
+              if (authUser.email?.toLowerCase() === 'geologol@gmail.com' && data.role !== 'admin') {
+                try {
+                  await updateDoc(docRef, { role: 'admin' });
+                } catch (e) {
+                  console.error("Error auto-updating admin role:", e);
+                }
+                setProfile({ ...data, role: 'admin' });
+              } else {
+                setProfile(data);
+              }
             } else {
               // Create default profile
               const newProfile: UserProfile = {
                 uid: authUser.uid,
                 name: authUser.displayName || 'Participante',
                 email: authUser.email || '',
-                role: authUser.email === 'Geologol@gmail.com' ? 'admin' : 'participant',
+                role: authUser.email?.toLowerCase() === 'geologol@gmail.com' ? 'admin' : 'participant',
                 totalPoints: 0,
                 avatarEmoji: '⚽' // Default emoji
               };
