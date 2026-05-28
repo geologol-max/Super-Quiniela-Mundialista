@@ -512,6 +512,24 @@ export const KNOCKOUT_MATCHES_CONFIG: KnockoutMatchConfig[] = [
   }
 ];
 
+function withTimeout<T>(promise: Promise<T>, ms: number = 7000): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error("Timeout waiting for Firestore response"));
+    }, ms);
+    promise.then(
+      (res) => {
+        clearTimeout(timer);
+        resolve(res);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
+}
+
 export function Predictions() {
   const { user, profile } = useAuth();
   const isLocked = useDeadline();
@@ -558,10 +576,13 @@ export function Predictions() {
       const loadData = async () => {
         try {
           const qPred = query(collection(db, 'predictions'), where('userId', '==', user.uid));
-          const [predSnap, podiumSnap] = await Promise.all([
-            getDocs(qPred),
-            getDoc(doc(db, 'podiums', user.uid))
-          ]);
+          const [predSnap, podiumSnap] = await withTimeout(
+            Promise.all([
+              getDocs(qPred),
+              getDoc(doc(db, 'podiums', user.uid))
+            ]),
+            7000
+          );
           
           const predMap: Record<string, Prediction> = {};
           predSnap.docs.forEach(doc => {

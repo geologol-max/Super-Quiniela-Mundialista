@@ -29,6 +29,24 @@ export const PARLEY_SEEDS: Omit<ParleyQuestion, 'correctAnswer'>[] = [
   { id: 'freekick_goals', question: '8) Cantidad de Goles de Tiro Libre', options: [], points: 10, type: 'number' }
 ];
 
+function withTimeout<T>(promise: Promise<T>, ms: number = 7000): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error("Timeout waiting for Firestore response"));
+    }, ms);
+    promise.then(
+      (res) => {
+        clearTimeout(timer);
+        resolve(res);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
+}
+
 export function Parley() {
   const { user } = useAuth();
   const isLocked = useDeadline();
@@ -44,10 +62,13 @@ export function Parley() {
       try {
         const qArr = user ? query(collection(db, 'parleyAnswers'), where('userId', '==', user.uid)) : null;
         
-        let [snap, ansSnap] = await Promise.all([
-          getDocs(collection(db, 'parleyQuestions')),
-          qArr ? getDocs(qArr) : Promise.resolve(null)
-        ]);
+        let [snap, ansSnap] = await withTimeout(
+          Promise.all([
+            getDocs(collection(db, 'parleyQuestions')),
+            qArr ? getDocs(qArr) : Promise.resolve(null)
+          ]),
+          7000
+        );
 
         const existingIds = snap.docs.map(d => d.id);
         const hasAllSeeds = PARLEY_SEEDS.every(s => existingIds.includes(s.id));
