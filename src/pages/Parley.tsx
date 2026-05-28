@@ -42,8 +42,13 @@ export function Parley() {
   useEffect(() => {
     const loadAll = async () => {
       try {
-        // 1. Fetch questions and check if healing / seeding is needed
-        let snap = await getDocs(collection(db, 'parleyQuestions'));
+        const qArr = user ? query(collection(db, 'parleyAnswers'), where('userId', '==', user.uid)) : null;
+        
+        let [snap, ansSnap] = await Promise.all([
+          getDocs(collection(db, 'parleyQuestions')),
+          qArr ? getDocs(qArr) : Promise.resolve(null)
+        ]);
+
         const existingIds = snap.docs.map(d => d.id);
         const hasAllSeeds = PARLEY_SEEDS.every(s => existingIds.includes(s.id));
         
@@ -67,10 +72,8 @@ export function Parley() {
         
         setQuestions(sortedQuestions);
 
-        // 2. Fetch user answers
-        if (user) {
-          const qArr = query(collection(db, 'parleyAnswers'), where('userId', '==', user.uid));
-          const ansSnap = await getDocs(qArr);
+        // 2. Map user answers
+        if (ansSnap) {
           const ansMap: Record<string, string> = {};
           ansSnap.docs.forEach(d => {
             const data = d.data() as ParleyAnswer;

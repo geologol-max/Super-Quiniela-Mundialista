@@ -558,7 +558,11 @@ export function Predictions() {
       const loadData = async () => {
         try {
           const qPred = query(collection(db, 'predictions'), where('userId', '==', user.uid));
-          const predSnap = await getDocs(qPred);
+          const [predSnap, podiumSnap] = await Promise.all([
+            getDocs(qPred),
+            getDoc(doc(db, 'podiums', user.uid))
+          ]);
+          
           const predMap: Record<string, Prediction> = {};
           predSnap.docs.forEach(doc => {
             const data = doc.data() as Prediction;
@@ -566,7 +570,6 @@ export function Predictions() {
           });
           setPredictions(predMap);
 
-          const podiumSnap = await getDoc(doc(db, 'podiums', user.uid));
           if (podiumSnap.exists()) {
             setPodium(podiumSnap.data() as PodiumPrediction);
           } else {

@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
 import appletConfig from '../../firebase-applet-config.json';
 
 // Use environment variables if available, otherwise fall back to the applet sandbox config
@@ -17,6 +17,14 @@ const firebaseConfig = {
 const databaseId = import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || appletConfig.firestoreDatabaseId || "(default)";
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, databaseId);
+
+// Initialize Firestore with persistent local cache (IndexedDB) for offline support and super fast loads
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager()
+  })
+}, databaseId);
+
 export const auth = getAuth(app);
+
 
