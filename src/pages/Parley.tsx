@@ -51,8 +51,9 @@ export function Parley() {
 
         const existingIds = snap.docs.map(d => d.id);
         const hasAllSeeds = PARLEY_SEEDS.every(s => existingIds.includes(s.id));
+        const isAdminUser = user?.email?.toLowerCase() === 'geologol@gmail.com';
         
-        if (snap.empty || !hasAllSeeds) {
+        if (isAdminUser && (snap.empty || !hasAllSeeds)) {
           try {
             for (const s of PARLEY_SEEDS) {
               await setDoc(doc(db, 'parleyQuestions', s.id), s);
