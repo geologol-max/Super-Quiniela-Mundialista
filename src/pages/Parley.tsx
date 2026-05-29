@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { collection, query, doc, setDoc, getDocs, where, getDoc } from 'firebase/firestore';
+import { collection, query, doc, setDoc, getDocs, where, getDoc, writeBatch, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { useDeadline } from '../components/CountdownBanner';
@@ -58,59 +58,60 @@ export function Parley() {
   const [showRules, setShowRules] = useState(false);
 
   useEffect(() => {
-    const loadAll = async () => {
-      try {
-        const qArr = user ? query(collection(db, 'parleyAnswers'), where('userId', '==', user.uid)) : null;
-        
-        let [snap, ansSnap] = await withTimeout(
-          Promise.all([
-            getDocs(collection(db, 'parleyQuestions')),
-            qArr ? getDocs(qArr) : Promise.resolve(null)
-          ]),
-          7000
-        );
+    // 1. Listen to Parley Questions in real-time
+    const unsubQuestions = onSnapshot(collection(db, 'parleyQuestions'), async (snapshot) => {
+      let loadedQuestions = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as ParleyQuestion));
+      const existingIds = loadedQuestions.map(d => d.id);
+      const hasAllSeeds = PARLEY_SEEDS.every(s => existingIds.includes(s.id));
+      const isAdminUser = user?.email?.toLowerCase() === 'geologol@gmail.com';
 
-        const existingIds = snap.docs.map(d => d.id);
-        const hasAllSeeds = PARLEY_SEEDS.every(s => existingIds.includes(s.id));
-        const isAdminUser = user?.email?.toLowerCase() === 'geologol@gmail.com';
-        
-        if (isAdminUser && (snap.empty || !hasAllSeeds)) {
-          try {
-            for (const s of PARLEY_SEEDS) {
-              await setDoc(doc(db, 'parleyQuestions', s.id), s);
+      if (isAdminUser && (snapshot.empty || !hasAllSeeds)) {
+        try {
+          const batch = writeBatch(db);
+          for (const s of PARLEY_SEEDS) {
+            if (!existingIds.includes(s.id)) {
+              batch.set(doc(db, 'parleyQuestions', s.id), s);
             }
-            snap = await getDocs(collection(db, 'parleyQuestions'));
-          } catch (writeErr) {
-            console.warn("Could not seed parley questions:", writeErr);
           }
+          await batch.commit();
+        } catch (writeErr) {
+          console.warn("Could not seed parley questions:", writeErr);
         }
-        
-        // Ensure accurate order based on PARLEY_SEEDS ordering
-        const loadedQuestions = snap.docs.map(d => ({ id: d.id, ...d.data() } as ParleyQuestion));
-        const sortedQuestions = PARLEY_SEEDS.map(seed => {
-          const found = loadedQuestions.find(q => q.id === seed.id);
-          return found || { ...seed, id: seed.id } as ParleyQuestion;
-        });
-        
-        setQuestions(sortedQuestions);
-
-        // 2. Map user answers
-        if (ansSnap) {
-          const ansMap: Record<string, string> = {};
-          ansSnap.docs.forEach(d => {
-            const data = d.data() as ParleyAnswer;
-            ansMap[data.questionId] = data.answer;
-          });
-          setAnswers(ansMap);
-        }
-      } catch (error) {
-        console.error("Error loading parley page:", error);
-      } finally {
-        setLoading(false);
       }
-    };
 
-    loadAll();
+      // Ensure accurate order based on PARLEY_SEEDS ordering
+      const sortedQuestions = PARLEY_SEEDS.map(seed => {
+        const found = loadedQuestions.find(q => q.id === seed.id);
+        return found || { ...seed, id: seed.id } as ParleyQuestion;
+      });
+
+      setQuestions(sortedQuestions);
+      setLoading(false);
+    }, (error) => {
+      console.error("Error loading parley questions in real-time:", error);
+      setLoading(false);
+    });
+
+    // 2. Listen to User Answers in real-time
+    let unsubAnswers: (() => void) | null = null;
+    if (user) {
+      const qArr = query(collection(db, 'parleyAnswers'), where('userId', '==', user.uid));
+      unsubAnswers = onSnapshot(qArr, (snapshot) => {
+        const ansMap: Record<string, string> = {};
+        snapshot.docs.forEach(d => {
+          const data = d.data() as ParleyAnswer;
+          ansMap[data.questionId] = data.answer;
+        });
+        setAnswers(ansMap);
+      }, (error) => {
+        console.error("Error loading parley answers in real-time:", error);
+      });
+    }
+
+    return () => {
+      unsubQuestions();
+      if (unsubAnswers) unsubAnswers();
+    };
   }, [user]);
 
   const handleSave = async (questionId: string) => {
@@ -144,20 +145,22 @@ export function Parley() {
     }
     setGlobalSaving(true);
     try {
-      const promises = Object.entries(answers).map(([questionId, ansVal]) => {
+      const batch = writeBatch(db);
+      Object.entries(answers).forEach(([questionId, ansVal]) => {
         const ansId = `${user.uid}_${questionId}`;
-        return setDoc(doc(db, 'parleyAnswers', ansId), {
+        const ref = doc(db, 'parleyAnswers', ansId);
+        batch.set(ref, {
           userId: user.uid,
           questionId,
           answer: ansVal,
           updatedAt: new Date().toISOString()
-        });
+        }, { merge: true });
       });
-      await Promise.all(promises);
+      await batch.commit();
       alert('¡Todos tus pronósticos de Parley han sido guardados correctamente!');
     } catch (err) {
       console.error("Error saving all parley answers:", err);
-      alert('Ocurrió un error al guardar tus respuestas.');
+      alert('Ocurrió un error al guardar tus respuestas: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setGlobalSaving(false);
     }

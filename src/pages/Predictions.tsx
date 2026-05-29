@@ -571,43 +571,50 @@ export function Predictions() {
       setMatchesLoading(false);
     });
 
-    // Load user predictions & podium data
-    if (user) {
-      const loadData = async () => {
-        try {
-          const qPred = query(collection(db, 'predictions'), where('userId', '==', user.uid));
-          const [predSnap, podiumSnap] = await withTimeout(
-            Promise.all([
-              getDocs(qPred),
-              getDoc(doc(db, 'podiums', user.uid))
-            ]),
-            7000
-          );
-          
-          const predMap: Record<string, Prediction> = {};
-          predSnap.docs.forEach(doc => {
-            const data = doc.data() as Prediction;
-            predMap[data.matchId] = data;
-          });
-          setPredictions(predMap);
+    let unsubPreds: (() => void) | null = null;
+    let unsubPodium: (() => void) | null = null;
 
-          if (podiumSnap.exists()) {
-            setPodium(podiumSnap.data() as PodiumPrediction);
-          } else {
-            setPodium(prev => ({ ...prev, userId: user.uid }));
-          }
-        } catch (error) {
-          console.error("Error loading predictions/podium:", error);
-        } finally {
-          setDataLoading(false);
+    // Load user predictions & podium data in real-time
+    if (user) {
+      const qPred = query(collection(db, 'predictions'), where('userId', '==', user.uid));
+      unsubPreds = onSnapshot(qPred, (snapshot) => {
+        const predMap: Record<string, Prediction> = {};
+        snapshot.docs.forEach(doc => {
+          const data = doc.data() as Prediction;
+          predMap[data.matchId] = data;
+        });
+        setPredictions(predMap);
+        setDataLoading(false);
+      }, (error) => {
+        console.error("Error loading predictions in real-time:", error);
+        setDataLoading(false);
+      });
+
+      const podiumDocRef = doc(db, 'podiums', user.uid);
+      unsubPodium = onSnapshot(podiumDocRef, (docSnap) => {
+        if (docSnap.exists()) {
+          setPodium(docSnap.data() as PodiumPrediction);
+        } else {
+          setPodium({
+            userId: user.uid,
+            champion: '',
+            runnerUp: '',
+            third: '',
+            fourth: ''
+          });
         }
-      };
-      loadData();
+      }, (error) => {
+        console.error("Error loading podium in real-time:", error);
+      });
     } else {
       setDataLoading(false);
     }
 
-    return () => unsubMatches();
+    return () => {
+      unsubMatches();
+      if (unsubPreds) unsubPreds();
+      if (unsubPodium) unsubPodium();
+    };
   }, [user]);
 
   // Self-heal / Seed system:
@@ -725,8 +732,10 @@ export function Predictions() {
     }
     setGlobalSaving(true);
     try {
-      // Save all match predictions that have input
-      const promises = Object.entries(predictions)
+      const batch = writeBatch(db);
+
+      // Save all match predictions that have input in the batch
+      Object.entries(predictions)
         .filter(([_, pred]) => {
           return (
             pred &&
@@ -736,9 +745,10 @@ export function Predictions() {
             !isNaN(Number(pred.scoreB))
           );
         })
-        .map(([matchId, pred]) => {
+        .forEach(([matchId, pred]) => {
           const predId = `${user.uid}_${matchId}`;
-          return setDoc(doc(db, 'predictions', predId), {
+          const ref = doc(db, 'predictions', predId);
+          batch.set(ref, {
             userId: user.uid,
             matchId,
             scoreA: Number(pred.scoreA),
@@ -748,17 +758,18 @@ export function Predictions() {
           }, { merge: true });
         });
 
-      // Save Honour Podium
-      promises.push(setDoc(doc(db, 'podiums', user.uid), {
+      // Save Honour Podium in the batch
+      const podiumRef = doc(db, 'podiums', user.uid);
+      batch.set(podiumRef, {
         userId: user.uid,
         champion: podium?.champion || '',
         runnerUp: podium?.runnerUp || '',
         third: podium?.third || '',
         fourth: podium?.fourth || '',
         updatedAt: new Date().toISOString()
-      }, { merge: true }));
+      }, { merge: true });
 
-      await Promise.all(promises);
+      await batch.commit();
       alert('¡Todos tus marcadores del grupo y Cuadro de Honor se guardaron correctamente!');
     } catch (error) {
       console.error("Error saving all data:", error);

@@ -40,11 +40,26 @@ export function Dashboard() {
   }, [profile]);
 
   useEffect(() => {
-    const q = query(collection(db, 'users'), orderBy('totalPoints', 'desc'));
+    const q = query(collection(db, 'users'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const usersData = snapshot.docs.map(doc => ({
-        ...doc.data()
-      })) as UserProfile[];
+      const usersData = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          ...data,
+          totalPoints: typeof data.totalPoints === 'number' ? data.totalPoints : 0
+        };
+      }) as UserProfile[];
+
+      // Sort users by totalPoints descending, and by name alphabetically as fallback
+      usersData.sort((a, b) => {
+        const pointsA = a.totalPoints || 0;
+        const pointsB = b.totalPoints || 0;
+        if (pointsB !== pointsA) {
+          return pointsB - pointsA;
+        }
+        return (a.name || '').localeCompare(b.name || '');
+      });
+
       setUsers(usersData);
       setLoading(false);
     }, (error) => {

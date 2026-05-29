@@ -10,11 +10,23 @@ export function Admin() {
   const [newMatch, setNewMatch] = useState<Partial<Match>>({ teamA: '', teamB: '', group: '', date: '', status: 'scheduled' });
   const [isSeeding, setIsSeeding] = useState(false);
   const [parleyQuestions, setParleyQuestions] = useState<ParleyQuestion[]>([]);
+  const [usersCount, setUsersCount] = useState<number | string>('...');
 
   useEffect(() => {
     fetchMatches();
     fetchParley();
+    fetchUsersCount();
   }, []);
+
+  const fetchUsersCount = async () => {
+    try {
+      const snap = await getDocs(collection(db, 'users'));
+      setUsersCount(snap.size);
+    } catch (e) {
+      console.error("Error fetching users count:", e);
+      setUsersCount('Error');
+    }
+  };
 
   const fetchMatches = async () => {
     const q = query(collection(db, 'matches'), orderBy('date', 'asc'));
@@ -80,6 +92,7 @@ export function Admin() {
 
   const recalculateLeaderboard = async () => {
     const usersSnap = await getDocs(collection(db, 'users'));
+    setUsersCount(usersSnap.size);
     for (const uDoc of usersSnap.docs) {
       const userId = uDoc.id;
       const predsSnap = await getDocs(query(collection(db, 'predictions'), where('userId', '==', userId)));
@@ -133,7 +146,7 @@ export function Admin() {
           <div className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1 flex items-center gap-2">
             <Users className="w-4 h-4" /> Usuarios
           </div>
-          <div className="text-2xl font-black text-indigo-600">Sync...</div>
+          <div className="text-2xl font-black text-indigo-600">{usersCount}</div>
         </div>
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
           <div className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1 flex items-center gap-2">
