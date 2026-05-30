@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { UserProfile } from '../types';
@@ -77,11 +77,11 @@ export function Dashboard() {
 
     try {
       const userRef = doc(db, 'users', profile.uid);
-      await updateDoc(userRef, {
+      await setDoc(userRef, {
         name: editingName.trim() || profile.name,
         avatarEmoji: selectedEmoji,
         avatarUrl: photoUrl.trim()
-      });
+      }, { merge: true });
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (e) {

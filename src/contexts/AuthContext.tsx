@@ -36,33 +36,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const docRef = doc(db, 'users', authUser.uid);
           
           unsubscribeProfile = onSnapshot(docRef, async (docSnap) => {
-            if (docSnap.exists()) {
-              const data = docSnap.data() as UserProfile;
-              if (authUser.email?.toLowerCase() === 'geologol@gmail.com' && data.role !== 'admin') {
-                try {
-                  await updateDoc(docRef, { role: 'admin' });
-                } catch (e) {
-                  console.error("Error auto-updating admin role:", e);
+            try {
+              if (docSnap.exists()) {
+                const data = docSnap.data() as UserProfile;
+                if (authUser.email?.toLowerCase() === 'geologol@gmail.com' && data.role !== 'admin') {
+                  try {
+                    await updateDoc(docRef, { role: 'admin' });
+                  } catch (e) {
+                    console.error("Error auto-updating admin role:", e);
+                  }
+                  setProfile({ ...data, role: 'admin' });
+                } else {
+                  setProfile(data);
                 }
-                setProfile({ ...data, role: 'admin' });
               } else {
-                setProfile(data);
+                // Create default profile (e.g. for Google Login where profile wasn't pre-created)
+                const newProfile: UserProfile = {
+                  uid: authUser.uid,
+                  name: authUser.displayName || 'Participante',
+                  email: authUser.email || '',
+                  role: authUser.email?.toLowerCase() === 'geologol@gmail.com' ? 'admin' : 'participant',
+                  totalPoints: 0,
+                  avatarEmoji: '⚽' // Default emoji
+                };
+                await setDoc(docRef, newProfile);
+                setProfile(newProfile);
               }
-            } else {
-              // Create default profile
-              const newProfile: UserProfile = {
-                uid: authUser.uid,
-                name: authUser.displayName || 'Participante',
-                email: authUser.email || '',
-                role: authUser.email?.toLowerCase() === 'geologol@gmail.com' ? 'admin' : 'participant',
-                totalPoints: 0,
-                avatarEmoji: '⚽' // Default emoji
-              };
-              await setDoc(docRef, newProfile);
-              setProfile(newProfile);
+            } catch (error) {
+              console.error("Error loading or creating user profile:", error);
+            } finally {
+              // Set loading false AFTER profile data is actually available or failed
+              setLoading(false);
             }
-            // Set loading false AFTER profile data is actually available
-            setLoading(false);
           }, (error) => {
             console.error("Error in profile snapshot:", error);
             setLoading(false);
@@ -105,14 +110,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error("Error setting displayName:", e);
     }
 
+    // Write user profile to Firestore immediately to prevent race conditions (like name defaulting to 'Participante')
+    try {
+      const docRef = doc(db, 'users', authUser.uid);
+      await setDoc(docRef, {
+        uid: authUser.uid,
+        name: name,
+        email: authUser.email || email,
+        role: authUser.email?.toLowerCase() === 'geologol@gmail.com' ? 'admin' : 'participant',
+        totalPoints: 0,
+        avatarEmoji: '⚽'
+      }, { merge: true });
+    } catch (e) {
+      console.error("Error creating user profile in registration:", e);
+    }
+
     // Try to send verification email but don't fail the registration if it fails
     try {
       await sendEmailVerification(authUser);
     } catch (e) {
       console.warn("Could not send email verification. This is normal if SMTP is not configured in Firebase.", e);
     }
-
-    // Initial profile created by useEffect listener
   };
 
   const logout = async () => {
