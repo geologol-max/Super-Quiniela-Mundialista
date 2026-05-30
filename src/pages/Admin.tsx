@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, doc, setDoc, query, orderBy, deleteDoc, where, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, doc, setDoc, query, orderBy, deleteDoc, where, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Match, UserProfile, Prediction, calculateMatchPoints, ParleyQuestion } from '../types';
 import { WORLD_CUP_TEAMS } from './Parley';
+import { OFFICIAL_2026_MATCHES_SEED } from './Predictions';
 import { Plus, Trash2, RefreshCw, Trophy, Users, CheckCircle } from 'lucide-react';
 
 export function Admin() {
@@ -110,18 +111,53 @@ export function Admin() {
 
   const seedSampleMatches = async () => {
     setIsSeeding(true);
-    const sampleMatches = [
-      { teamA: 'Catar', teamB: 'Ecuador', group: 'A', date: '2026-06-07T15:00:00Z', status: 'scheduled' },
-      { teamA: 'Inglaterra', teamB: 'Irán', group: 'B', date: '2026-06-08T13:00:00Z', status: 'scheduled' },
-      { teamA: 'Senegal', teamB: 'Países Bajos', group: 'A', date: '2026-06-08T16:00:00Z', status: 'scheduled' },
-      { teamA: 'EEUU', teamB: 'Gales', group: 'B', date: '2026-06-08T19:00:00Z', status: 'scheduled' },
-      { teamA: 'Argentina', teamB: 'Arabia Saudita', group: 'C', date: '2026-06-09T10:00:00Z', status: 'scheduled' },
-    ];
-    for (const m of sampleMatches) {
-      await addDoc(collection(db, 'matches'), m);
+    try {
+      const sampleMatches = [
+        { teamA: 'Catar', teamB: 'Ecuador', group: 'Grupo A', date: '2026-06-07T15:00:00Z', status: 'scheduled' },
+        { teamA: 'Inglaterra', teamB: 'Irán', group: 'Grupo B', date: '2026-06-08T13:00:00Z', status: 'scheduled' },
+        { teamA: 'Senegal', teamB: 'Países Bajos', group: 'Grupo A', date: '2026-06-08T16:00:00Z', status: 'scheduled' },
+        { teamA: 'EEUU', teamB: 'Gales', group: 'Grupo B', date: '2026-06-08T19:00:00Z', status: 'scheduled' },
+        { teamA: 'Argentina', teamB: 'Arabia Saudita', group: 'Grupo C', date: '2026-06-09T10:00:00Z', status: 'scheduled' },
+      ];
+      for (const m of sampleMatches) {
+        await addDoc(collection(db, 'matches'), m);
+      }
+      fetchMatches();
+      alert('Partidos iniciales sembrados con éxito.');
+    } catch (e) {
+      console.error(e);
+      alert('Error al sembrar iniciales: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setIsSeeding(false);
     }
-    fetchMatches();
-    setIsSeeding(false);
+  };
+
+  const seedOfficialMatches = async () => {
+    setIsSeeding(true);
+    try {
+      const querySnap = await getDocs(collection(db, 'matches'));
+      const batch = writeBatch(db);
+      
+      // Delete old ones inside the atomic batch
+      querySnap.docs.forEach(d => {
+        batch.delete(doc(db, 'matches', d.id));
+      });
+
+      // Add all official World Cup 2026 Matches inside the batch
+      OFFICIAL_2026_MATCHES_SEED.forEach((match, idx) => {
+        const matchId = `match_2026_${idx + 1}`;
+        batch.set(doc(db, 'matches', matchId), match);
+      });
+
+      await batch.commit();
+      fetchMatches();
+      alert('¡Calendario oficial de 72 partidos de la Fase de Grupos sembrado con éxito!');
+    } catch (e) {
+      console.error(e);
+      alert('Error al sembrar partidos oficiales: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setIsSeeding(false);
+    }
   };
 
   return (
@@ -180,9 +216,10 @@ export function Admin() {
               <input type="datetime-local" value={newMatch.date} onChange={e => setNewMatch({...newMatch, date: e.target.value})} className="w-full p-2 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:bg-white/20" />
             </div>
           </div>
-          <div className="flex gap-4 pt-2">
+          <div className="flex gap-4 pt-2 flex-wrap">
             <button onClick={handleAddMatch} className="px-6 py-2 bg-white text-indigo-600 rounded-lg font-bold hover:bg-slate-50 transition">Crear Partido</button>
             <button onClick={seedSampleMatches} disabled={isSeeding} className="px-6 py-2 border border-white/30 rounded-lg text-white/80 hover:bg-white/10 transition">Sembrar Iniciales</button>
+            <button onClick={seedOfficialMatches} disabled={isSeeding} className="px-6 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-bold transition">Sembrar 72 Partidos Mundiales</button>
           </div>
         </section>
 
