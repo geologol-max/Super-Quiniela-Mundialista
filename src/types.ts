@@ -16,6 +16,7 @@ export interface Prediction {
   scoreA: number;
   scoreB: number;
   points?: number;
+  winnerId?: 'A' | 'B' | null;
 }
 
 export interface UserProfile {

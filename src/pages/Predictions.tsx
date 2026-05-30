@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, setDoc, getDocs, where, getDoc, deleteDoc, writeBatch } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, setDoc, getDocs, where, writeBatch } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { useDeadline } from '../components/CountdownBanner';
@@ -548,6 +548,7 @@ export function Predictions() {
   const [matchesLoading, setMatchesLoading] = useState(true);
   const [dataLoading, setDataLoading] = useState(true);
   const loading = matchesLoading || dataLoading;
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
   const [globalSaving, setGlobalSaving] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
@@ -560,14 +561,17 @@ export function Predictions() {
   ];
 
   useEffect(() => {
-    // Load matches with real-time listener
-    const q = query(collection(db, 'matches'), orderBy('date', 'asc'));
-    const unsubMatches = onSnapshot(q, (snapshot) => {
+    // Load matches with real-time listener (no orderBy to avoid needing composite index)
+    const unsubMatches = onSnapshot(collection(db, 'matches'), (snapshot) => {
       const dbMatches = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Match));
+      // Sort client-side to avoid requiring a Firestore composite index
+      dbMatches.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
       setMatches(dbMatches);
       setMatchesLoading(false);
+      setLoadError(null);
     }, (error) => {
       console.error("Error loading real-time matches:", error);
+      setLoadError("Error al cargar partidos: " + error.message);
       setMatchesLoading(false);
     });
 
@@ -585,8 +589,10 @@ export function Predictions() {
         });
         setPredictions(predMap);
         setDataLoading(false);
+        setLoadError(null);
       }, (error) => {
         console.error("Error loading predictions in real-time:", error);
+        setLoadError("Error al cargar pronósticos: " + error.message);
         setDataLoading(false);
       });
 
@@ -713,7 +719,7 @@ export function Predictions() {
         matchId,
         scoreA: Number(pred.scoreA),
         scoreB: Number(pred.scoreB),
-        winnerId: (pred as any).winnerId || null,
+        winnerId: pred.winnerId || null,
         updatedAt: new Date().toISOString()
       }, { merge: true });
       setTimeout(() => setSaving(null), 1000);
@@ -753,7 +759,7 @@ export function Predictions() {
             matchId,
             scoreA: Number(pred.scoreA),
             scoreB: Number(pred.scoreB),
-            winnerId: (pred as any).winnerId || null,
+            winnerId: pred.winnerId || null,
             updatedAt: new Date().toISOString()
           }, { merge: true });
         });
@@ -784,6 +790,13 @@ export function Predictions() {
       <div className="flex flex-col items-center justify-center py-40 gap-3">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
         <p className="text-sm font-bold text-slate-500">Cargando pronósticos...</p>
+        {loadError && (
+          <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm max-w-md text-center">
+            <p className="font-bold">Error de conexión</p>
+            <p className="text-xs mt-1">{loadError}</p>
+            <button onClick={() => window.location.reload()} className="mt-3 px-4 py-2 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700">Reintentar</button>
+          </div>
+        )}
       </div>
     );
   }
@@ -849,8 +862,8 @@ export function Predictions() {
         sA = m.scoreA;
         sB = m.scoreB;
       } else if (pred && pred.scoreA !== undefined && pred.scoreB !== undefined) {
-        sA = pred.scoreA;
-        sB = pred.scoreB;
+        sA = Number(pred.scoreA);
+        sB = Number(pred.scoreB);
       }
 
       // If we have a score, accumulate stats
@@ -1039,7 +1052,7 @@ export function Predictions() {
     if (sA > sB) return { winner: teamA, loser: teamB, winnerTeam: 'A' };
     if (sA < sB) return { winner: teamB, loser: teamA, winnerTeam: 'B' };
     
-    const winnerId = (pred as any).winnerId;
+    const winnerId = pred.winnerId;
     if (winnerId === 'A') return { winner: teamA, loser: teamB, winnerTeam: 'A' };
     if (winnerId === 'B') return { winner: teamB, loser: teamA, winnerTeam: 'B' };
     

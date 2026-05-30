@@ -61,13 +61,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               await setDoc(docRef, newProfile);
               setProfile(newProfile);
             }
+            // Set loading false AFTER profile data is actually available
+            setLoading(false);
+          }, (error) => {
+            console.error("Error in profile snapshot:", error);
+            setLoading(false);
           });
         } else {
           setProfile(null);
+          setLoading(false);
         }
       } catch (error) {
         console.error("Error setting up user profile in auth listener:", error);
-      } finally {
         setLoading(false);
       }
     });
