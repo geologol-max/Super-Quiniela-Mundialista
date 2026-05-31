@@ -3,7 +3,7 @@ import { collection, query, orderBy, onSnapshot, doc, setDoc } from 'firebase/fi
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { UserProfile } from '../types';
-import { Trophy, Medal, Smile, Image as ImageIcon, Check, Save, Sparkles, User, RefreshCw } from 'lucide-react';
+import { Trophy, Medal, Smile, Image as ImageIcon, Check, Save, Sparkles, User, RefreshCw, AlertCircle } from 'lucide-react';
 import { motion } from 'motion/react';
 
 const PRESET_FLAGS = [
@@ -21,6 +21,7 @@ const PRESET_FUN = [
 export function Dashboard() {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const { profile } = useAuth();
 
   // Local state for profile edits
@@ -61,9 +62,15 @@ export function Dashboard() {
       });
 
       setUsers(usersData);
+      setLoadError(null);
       setLoading(false);
     }, (error) => {
       console.error("Error loading leaderboard:", error);
+      if (error.code === 'permission-denied') {
+        setLoadError("Error de permisos (permission-denied) en Firestore. Asegúrate de haber publicado las reglas de seguridad para la base de datos 'ai-studio-5bf3eb3e-6568-477c-a78c-61784d988b44' en la consola web de Firebase.");
+      } else {
+        setLoadError("Error al cargar participantes: " + error.message);
+      }
       setLoading(false);
     });
 
@@ -102,6 +109,16 @@ export function Dashboard() {
 
   return (
     <div className="space-y-8">
+      {loadError && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-2xl text-red-700 text-sm flex gap-3 items-start shadow-sm">
+          <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-red-600 animate-pulse" />
+          <div>
+            <p className="font-bold">Error de conexión con la base de datos (Firestore)</p>
+            <p className="text-xs mt-1 leading-relaxed">{loadError}</p>
+          </div>
+        </div>
+      )}
+
       {/* HEADER */}
       <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
