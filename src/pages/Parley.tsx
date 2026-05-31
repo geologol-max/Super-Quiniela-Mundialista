@@ -6,28 +6,9 @@ import { useDeadline } from '../components/CountdownBanner';
 import { ParleyQuestion, ParleyAnswer } from '../types';
 import { HelpCircle, Save, CheckCircle2, AlertCircle, Trophy, Loader2, Info, ChevronDown, ChevronUp, Clock, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { WORLD_CUP_TEAMS, PARLEY_SEEDS } from '../lib/constants';
+import { syncUserCompletionData } from '../lib/completionSync';
 
-export const WORLD_CUP_TEAMS = [
-  "Alemania", "Arabia Saudita", "Argelia", "Argentina", "Australia", "Austria", 
-  "Bélgica", "Bosnia y Herzegovina", "Brasil", "Cabo Verde", "Canadá", "Colombia", 
-  "Corea del Sur", "Costa de Marfil", "Croacia", "Curazao", "Dinamarca", "Ecuador", 
-  "Egipto", "Escocia", "España", "Estados Unidos", "Francia", "Ghana", "Haití", 
-  "Inglaterra", "Irak", "Irán", "Japón", "Jordania", "Marruecos", "México", 
-  "Noruega", "Nueva Zelanda", "Países Bajos", "Panamá", "Paraguay", "Portugal", 
-  "Qatar", "República Checa", "República Democrática del Congo", "Senegal", 
-  "Sudáfrica", "Suecia", "Túnez", "Turquía", "Uruguay", "Uzbekistán"
-];
-
-export const PARLEY_SEEDS: Omit<ParleyQuestion, 'correctAnswer'>[] = [
-  { id: 'favorite_team', question: '1) Equipo Favorito (Selección Mundial 2026)', options: WORLD_CUP_TEAMS, points: 10, type: 'select' },
-  { id: 'top_scorer', question: '2) Goleador del Mundial (Nombre del Jugador)', options: [], points: 10, type: 'text' },
-  { id: 'top_scorer_goals', question: '3) Cantidad de Goles del Goleador del Mundial', options: [], points: 10, type: 'number' },
-  { id: 'total_goals', question: '4) Cantidad de Goles Anotados en el Mundial', options: [], points: 10, type: 'number' },
-  { id: 'yellow_cards', question: '5) Cantidad de Tarjetas Amarillas', options: [], points: 10, type: 'number' },
-  { id: 'red_cards', question: '6) Cantidad de Tarjetas Rojas', options: [], points: 10, type: 'number' },
-  { id: 'penalty_goals', question: '7) Cantidad de Goles de Penales (Solo en Fase de Grupos)', options: [], points: 10, type: 'number' },
-  { id: 'freekick_goals', question: '8) Cantidad de Goles de Tiro Libre', options: [], points: 10, type: 'number' }
-];
 
 function withTimeout<T>(promise: Promise<T>, ms: number = 7000): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -130,6 +111,10 @@ export function Parley() {
         answer: answers[questionId],
         updatedAt: new Date().toISOString()
       });
+      
+      // Sync user completion status in the background
+      syncUserCompletionData(user.uid);
+      
     } catch (err) {
       console.error("Error saving parley answer:", err);
     } finally {
@@ -157,6 +142,10 @@ export function Parley() {
         }, { merge: true });
       });
       await batch.commit();
+      
+      // Sync user completion status in the background
+      syncUserCompletionData(user.uid);
+      
       alert('¡Todos tus pronósticos de Parley han sido guardados correctamente!');
     } catch (err) {
       console.error("Error saving all parley answers:", err);

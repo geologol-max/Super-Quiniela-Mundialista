@@ -3,6 +3,8 @@ import { User, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut,
 import { doc, getDoc, setDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { UserProfile } from '../types';
+import { autoSeedCollections } from '../lib/autoSeed';
+import { syncUserCompletionData } from '../lib/completionSync';
 
 interface AuthContextType {
   user: User | null;
@@ -33,6 +35,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         setUser(authUser);
         if (authUser) {
+          // Trigger background auto-seeding of matches & parley templates
+          autoSeedCollections(db);
+          // Sync current user completion counts
+          syncUserCompletionData(authUser.uid);
+
           const docRef = doc(db, 'users', authUser.uid);
           
           unsubscribeProfile = onSnapshot(docRef, async (docSnap) => {
@@ -57,7 +64,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   email: authUser.email || '',
                   role: authUser.email?.toLowerCase() === 'geologol@gmail.com' ? 'admin' : 'participant',
                   totalPoints: 0,
-                  avatarEmoji: '⚽' // Default emoji
+                  avatarEmoji: '⚽', // Default emoji
+                  predictionsCount: 0,
+                  parleyCount: 0,
+                  completed: false
                 };
                 await setDoc(docRef, newProfile);
                 setProfile(newProfile);
@@ -119,7 +129,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email: authUser.email || email,
         role: authUser.email?.toLowerCase() === 'geologol@gmail.com' ? 'admin' : 'participant',
         totalPoints: 0,
-        avatarEmoji: '⚽'
+        avatarEmoji: '⚽',
+        predictionsCount: 0,
+        parleyCount: 0,
+        completed: false
       }, { merge: true });
     } catch (e) {
       console.error("Error creating user profile in registration:", e);

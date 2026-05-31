@@ -2,8 +2,7 @@ import { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, doc, setDoc, query, orderBy, deleteDoc, where, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Match, UserProfile, Prediction, calculateMatchPoints, ParleyQuestion } from '../types';
-import { WORLD_CUP_TEAMS } from './Parley';
-import { OFFICIAL_2026_MATCHES_SEED } from './Predictions';
+import { WORLD_CUP_TEAMS, OFFICIAL_2026_MATCHES_SEED } from '../lib/constants';
 import { Plus, Trash2, RefreshCw, Trophy, Users, CheckCircle } from 'lucide-react';
 
 export function Admin() {

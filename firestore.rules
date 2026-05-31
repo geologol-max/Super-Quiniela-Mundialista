@@ -25,10 +25,11 @@ service cloud.firestore {
       allow create, update: if isSignedIn() && (isOwner(userId) || isAdmin());
     }
 
-    // Matches - public read, admin write
+    // Matches - public read, signed in can create, only admin can edit/delete
     match /matches/{matchId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
     }
 
     // Predictions - owner read/write, others can read
@@ -43,10 +44,11 @@ service cloud.firestore {
       allow create, update: if isSignedIn() && (request.resource.data.userId == request.auth.uid || isAdmin());
     }
 
-    // Parley Questions
+    // Parley Questions - public read, signed in can create, only admin can edit/delete
     match /parleyQuestions/{questionId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
     }
 
     // Parley Answers

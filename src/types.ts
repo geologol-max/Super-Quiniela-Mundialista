@@ -27,6 +27,9 @@ export interface UserProfile {
   totalPoints: number;
   avatarEmoji?: string;
   avatarUrl?: string;
+  predictionsCount?: number;
+  parleyCount?: number;
+  completed?: boolean;
 }
 
 export interface ParleyQuestion {

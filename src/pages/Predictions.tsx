@@ -6,158 +6,9 @@ import { useDeadline } from '../components/CountdownBanner';
 import { Match, Prediction, PodiumPrediction } from '../types';
 import { Save, AlertCircle, CheckCircle2, Trophy, Medal, Clock, RefreshCw, BarChart2, Star, Info, ChevronDown, ChevronUp, Users, Sparkles, Calendar } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { TEAM_FLAGS, OFFICIAL_2026_MATCHES_SEED } from '../lib/constants';
+import { syncUserCompletionData } from '../lib/completionSync';
 
-// TEAM FLAGS EMOJI DICTIONARY
-export const TEAM_FLAGS: Record<string, string> = {
-  "Alemania": "🇩🇪",
-  "Arabia Saudita": "🇸🇦",
-  "Argelia": "🇩🇿",
-  "Argentina": "🇦🇷",
-  "Australia": "🇦🇺",
-  "Austria": "🇦🇹",
-  "Bélgica": "🇧🇪",
-  "Bosnia y Herzegovina": "🇧🇦",
-  "Brasil": "🇧🇷",
-  "Cabo Verde": "🇨🇻",
-  "Canadá": "🇨🇦",
-  "Colombia": "🇨🇴",
-  "Corea del Sur": "🇰🇷",
-  "Costa de Marfil": "🇨🇮",
-  "Croacia": "🇭🇷",
-  "Curazao": "🇨🇼",
-  "Dinamarca": "🇩🇰",
-  "Ecuador": "🇪🇨",
-  "Egipto": "🇪🇬",
-  "Escocia": "🏴󠁧󠁢󠁳󠁣󠁴󠁿",
-  "España": "🇪🇸",
-  "Estados Unidos": "🇺🇸",
-  "Francia": "🇫🇷",
-  "Ghana": "🇬🇭",
-  "Haití": "🇭🇹",
-  "Inglaterra": "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
-  "Irak": "🇮🇶",
-  "Irán": "🇮🇷",
-  "Japón": "🇯🇵",
-  "Jordania": "🇯🇴",
-  "Marruecos": "🇲🇦",
-  "México": "🇲🇽",
-  "Noruega": "🇳🇴",
-  "Nueva Zelanda": "🇳🇿",
-  "Países Bajos": "🇳🇱",
-  "Panamá": "🇵🇦",
-  "Paraguay": "🇵🇾",
-  "Portugal": "🇵🇹",
-  "Qatar": "🇶🇦",
-  "República Checa": "🇨🇿",
-  "República Democrática del Congo": "🇨🇩",
-  "Senegal": "🇸🇳",
-  "Sudáfrica": "🇿🇦",
-  "Suecia": "🇸🇪",
-  "Suiza": "🇨🇭",
-  "Túnez": "🇹🇳",
-  "Turquía": "🇹🇷",
-  "Uruguay": "🇺🇾",
-  "Uzbekistán": "🇺🇿"
-};
-
-// 72 Group stage matches representing 48 teams in 12 groups of 4 teams
-export const OFFICIAL_2026_MATCHES_SEED = [
-  // Grupo A
-  { teamA: 'México', teamB: 'Sudáfrica', group: 'Grupo A', date: '2026-06-11T20:00:00Z', status: 'scheduled' },
-  { teamA: 'Corea del Sur', teamB: 'República Checa', group: 'Grupo A', date: '2026-06-12T13:00:00Z', status: 'scheduled' },
-  { teamA: 'República Checa', teamB: 'Sudáfrica', group: 'Grupo A', date: '2026-06-16T15:00:00Z', status: 'scheduled' },
-  { teamA: 'México', teamB: 'Corea del Sur', group: 'Grupo A', date: '2026-06-16T19:00:00Z', status: 'scheduled' },
-  { teamA: 'República Checa', teamB: 'México', group: 'Grupo A', date: '2026-06-20T21:00:00Z', status: 'scheduled' },
-  { teamA: 'Sudáfrica', teamB: 'Corea del Sur', group: 'Grupo A', date: '2026-06-20T21:00:00Z', status: 'scheduled' },
-
-  // Grupo B
-  { teamA: 'Canadá', teamB: 'Bosnia y Herzegovina', group: 'Grupo B', date: '2026-06-12T16:00:00Z', status: 'scheduled' },
-  { teamA: 'Qatar', teamB: 'Suiza', group: 'Grupo B', date: '2026-06-12T19:00:00Z', status: 'scheduled' },
-  { teamA: 'Bosnia y Herzegovina', teamB: 'Qatar', group: 'Grupo B', date: '2026-06-17T13:00:00Z', status: 'scheduled' },
-  { teamA: 'Canadá', teamB: 'Suiza', group: 'Grupo B', date: '2026-06-17T17:00:00Z', status: 'scheduled' },
-  { teamA: 'Bosnia y Herzegovina', teamB: 'Suiza', group: 'Grupo B', date: '2026-06-21T18:00:00Z', status: 'scheduled' },
-  { teamA: 'Canadá', teamB: 'Qatar', group: 'Grupo B', date: '2026-06-21T18:00:00Z', status: 'scheduled' },
-
-  // Grupo C
-  { teamA: 'Brasil', teamB: 'Marruecos', group: 'Grupo C', date: '2026-06-13T13:00:00Z', status: 'scheduled' },
-  { teamA: 'Haití', teamB: 'Escocia', group: 'Grupo C', date: '2026-06-13T16:00:00Z', status: 'scheduled' },
-  { teamA: 'Marruecos', teamB: 'Haití', group: 'Grupo C', date: '2026-06-18T15:00:00Z', status: 'scheduled' },
-  { teamA: 'Brasil', teamB: 'Escocia', group: 'Grupo C', date: '2026-06-18T19:00:00Z', status: 'scheduled' },
-  { teamA: 'Marruecos', teamB: 'Escocia', group: 'Grupo C', date: '2026-06-22T21:00:00Z', status: 'scheduled' },
-  { teamA: 'Brasil', teamB: 'Haití', group: 'Grupo C', date: '2026-06-22T21:00:00Z', status: 'scheduled' },
-
-  // Grupo D
-  { teamA: 'Estados Unidos', teamB: 'Paraguay', group: 'Grupo D', date: '2026-06-12T22:00:00Z', status: 'scheduled' },
-  { teamA: 'Australia', teamB: 'Turquía', group: 'Grupo D', date: '2026-06-13T19:00:00Z', status: 'scheduled' },
-  { teamA: 'Paraguay', teamB: 'Australia', group: 'Grupo D', date: '2026-06-18T13:00:00Z', status: 'scheduled' },
-  { teamA: 'Estados Unidos', teamB: 'Turquía', group: 'Grupo D', date: '2026-06-18T17:00:00Z', status: 'scheduled' },
-  { teamA: 'Estados Unidos', teamB: 'Australia', group: 'Grupo D', date: '2026-06-22T18:00:00Z', status: 'scheduled' },
-  { teamA: 'Paraguay', teamB: 'Turquía', group: 'Grupo D', date: '2026-06-22T18:00:00Z', status: 'scheduled' },
-
-  // Grupo E
-  { teamA: 'Alemania', teamB: 'Ecuador', group: 'Grupo E', date: '2026-06-14T13:00:00Z', status: 'scheduled' },
-  { teamA: 'Costa de Marfil', teamB: 'Curazao', group: 'Grupo E', date: '2026-06-14T16:00:00Z', status: 'scheduled' },
-  { teamA: 'Ecuador', teamB: 'Costa de Marfil', group: 'Grupo E', date: '2026-06-19T15:00:00Z', status: 'scheduled' },
-  { teamA: 'Alemania', teamB: 'Curazao', group: 'Grupo E', date: '2026-06-19T19:00:00Z', status: 'scheduled' },
-  { teamA: 'Ecuador', teamB: 'Curazao', group: 'Grupo E', date: '2026-06-23T21:00:00Z', status: 'scheduled' },
-  { teamA: 'Alemania', teamB: 'Costa de Marfil', group: 'Grupo E', date: '2026-06-23T21:00:00Z', status: 'scheduled' },
-
-  // Grupo F
-  { teamA: 'Países Bajos', teamB: 'Japón', group: 'Grupo F', date: '2026-06-14T19:00:00Z', status: 'scheduled' },
-  { teamA: 'Túnez', teamB: 'Suecia', group: 'Grupo F', date: '2026-06-15T13:00:00Z', status: 'scheduled' },
-  { teamA: 'Japón', teamB: 'Túnez', group: 'Grupo F', date: '2026-06-20T13:00:00Z', status: 'scheduled' },
-  { teamA: 'Países Bajos', teamB: 'Suecia', group: 'Grupo F', date: '2026-06-20T17:00:00Z', status: 'scheduled' },
-  { teamA: 'Países Bajos', teamB: 'Túnez', group: 'Grupo F', date: '2026-06-24T18:00:00Z', status: 'scheduled' },
-  { teamA: 'Japón', teamB: 'Suecia', group: 'Grupo F', date: '2026-06-24T18:00:00Z', status: 'scheduled' },
-
-  // Grupo G
-  { teamA: 'Bélgica', teamB: 'Egipto', group: 'Grupo G', date: '2026-06-15T16:00:00Z', status: 'scheduled' },
-  { teamA: 'Irán', teamB: 'Nueva Zelanda', group: 'Grupo G', date: '2026-06-15T19:00:00Z', status: 'scheduled' },
-  { teamA: 'Egipto', teamB: 'Irán', group: 'Grupo G', date: '2026-06-21T15:00:00Z', status: 'scheduled' },
-  { teamA: 'Bélgica', teamB: 'Nueva Zelanda', group: 'Grupo G', date: '2026-06-21T19:00:00Z', status: 'scheduled' },
-  { teamA: 'Egipto', teamB: 'Nueva Zelanda', group: 'Grupo G', date: '2026-06-25T21:00:00Z', status: 'scheduled' },
-  { teamA: 'Bélgica', teamB: 'Irán', group: 'Grupo G', date: '2026-06-25T21:00:00Z', status: 'scheduled' },
-
-  // Grupo H
-  { teamA: 'España', teamB: 'Cabo Verde', group: 'Grupo H', date: '2026-06-16T13:00:00Z', status: 'scheduled' },
-  { teamA: 'Arabia Saudita', teamB: 'Uruguay', group: 'Grupo H', date: '2026-06-16T16:00:00Z', status: 'scheduled' },
-  { teamA: 'Cabo Verde', teamB: 'Arabia Saudita', group: 'Grupo H', date: '2026-06-22T13:00:00Z', status: 'scheduled' },
-  { teamA: 'España', teamB: 'Uruguay', group: 'Grupo H', date: '2026-06-22T17:00:00Z', status: 'scheduled' },
-  { teamA: 'Cabo Verde', teamB: 'Uruguay', group: 'Grupo H', date: '2026-06-26T18:00:00Z', status: 'scheduled' },
-  { teamA: 'España', teamB: 'Arabia Saudita', group: 'Grupo H', date: '2026-06-26T18:00:00Z', status: 'scheduled' },
-
-  // Grupo I
-  { teamA: 'Francia', teamB: 'Senegal', group: 'Grupo I', date: '2026-06-17T13:00:00Z', status: 'scheduled' },
-  { teamA: 'Irak', teamB: 'Noruega', group: 'Grupo I', date: '2026-06-17T16:00:00Z', status: 'scheduled' },
-  { teamA: 'Senegal', teamB: 'Irak', group: 'Grupo I', date: '2026-06-23T13:00:00Z', status: 'scheduled' },
-  { teamA: 'Francia', teamB: 'Noruega', group: 'Grupo I', date: '2026-06-23T17:00:00Z', status: 'scheduled' },
-  { teamA: 'Francia', teamB: 'Irak', group: 'Grupo I', date: '2026-06-27T21:00:00Z', status: 'scheduled' },
-  { teamA: 'Senegal', teamB: 'Noruega', group: 'Grupo I', date: '2026-06-27T21:00:00Z', status: 'scheduled' },
-
-  // Grupo J
-  { teamA: 'Argentina', teamB: 'Argelia', group: 'Grupo J', date: '2026-06-15T22:00:00Z', status: 'scheduled' },
-  { teamA: 'Austria', teamB: 'Jordania', group: 'Grupo J', date: '2026-06-16T19:00:00Z', status: 'scheduled' },
-  { teamA: 'Argelia', teamB: 'Austria', group: 'Grupo J', date: '2026-06-21T13:00:00Z', status: 'scheduled' },
-  { teamA: 'Argentina', teamB: 'Jordania', group: 'Grupo J', date: '2026-06-21T17:00:00Z', status: 'scheduled' },
-  { teamA: 'Argentina', teamB: 'Austria', group: 'Grupo J', date: '2026-06-25T18:00:00Z', status: 'scheduled' },
-  { teamA: 'Argelia', teamB: 'Jordania', group: 'Grupo J', date: '2026-06-25T18:00:00Z', status: 'scheduled' },
-
-  // Grupo K
-  { teamA: 'Portugal', teamB: 'República Democrática del Congo', group: 'Grupo K', date: '2026-06-18T13:00:00Z', status: 'scheduled' },
-  { teamA: 'Uzbekistán', teamB: 'Colombia', group: 'Grupo K', date: '2026-06-18T16:00:00Z', status: 'scheduled' },
-  { teamA: 'República Democrática del Congo', teamB: 'Uzbekistán', group: 'Grupo K', date: '2026-06-24T13:00:00Z', status: 'scheduled' },
-  { teamA: 'Portugal', teamB: 'Colombia', group: 'Grupo K', date: '2026-06-24T17:00:00Z', status: 'scheduled' },
-  { teamA: 'Portugal', teamB: 'Uzbekistán', group: 'Grupo K', date: '2026-06-28T18:00:00Z', status: 'scheduled' },
-  { teamA: 'República Democrática del Congo', teamB: 'Colombia', group: 'Grupo K', date: '2026-06-28T18:00:00Z', status: 'scheduled' },
-
-  // Grupo L
-  { teamA: 'Inglaterra', teamB: 'Croacia', group: 'Grupo L', date: '2026-06-19T13:00:00Z', status: 'scheduled' },
-  { teamA: 'Ghana', teamB: 'Panamá', group: 'Grupo L', date: '2026-06-19T16:00:00Z', status: 'scheduled' },
-  { teamA: 'Croacia', teamB: 'Ghana', group: 'Grupo L', date: '2026-06-25T13:00:00Z', status: 'scheduled' },
-  { teamA: 'Inglaterra', teamB: 'Panamá', group: 'Grupo L', date: '2026-06-25T17:00:00Z', status: 'scheduled' },
-  { teamA: 'Inglaterra', teamB: 'Ghana', group: 'Grupo L', date: '2026-06-29T21:00:00Z', status: 'scheduled' },
-  { teamA: 'Croacia', teamB: 'Panamá', group: 'Grupo L', date: '2026-06-29T21:00:00Z', status: 'scheduled' }
-];
 
 export interface KnockoutSource {
   type: 'group' | 'thirds' | 'match_winner' | 'match_loser';
@@ -722,6 +573,10 @@ export function Predictions() {
         winnerId: pred.winnerId || null,
         updatedAt: new Date().toISOString()
       }, { merge: true });
+      
+      // Sync user completion status in the background
+      syncUserCompletionData(user.uid);
+      
       setTimeout(() => setSaving(null), 1000);
     } catch (error) {
       console.error("Error saving single prediction:", error);
@@ -776,6 +631,10 @@ export function Predictions() {
       }, { merge: true });
 
       await batch.commit();
+      
+      // Sync user completion status in the background
+      syncUserCompletionData(user.uid);
+      
       alert('¡Todos tus marcadores del grupo y Cuadro de Honor se guardaron correctamente!');
     } catch (error) {
       console.error("Error saving all data:", error);

@@ -3,7 +3,7 @@ import { collection, query, orderBy, onSnapshot, doc, setDoc } from 'firebase/fi
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { UserProfile } from '../types';
-import { Trophy, Medal, Smile, Image as ImageIcon, Check, Save, Sparkles, User, RefreshCw, AlertCircle } from 'lucide-react';
+import { Trophy, Medal, Smile, Image as ImageIcon, Check, Save, Sparkles, User, RefreshCw, AlertCircle, Users } from 'lucide-react';
 import { motion } from 'motion/react';
 
 const PRESET_FLAGS = [
@@ -23,6 +23,7 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const { profile } = useAuth();
+  const [activeTab, setActiveTab] = useState<'leaderboard' | 'registered'>('leaderboard');
 
   // Local state for profile edits
   const [editingName, setEditingName] = useState('');
@@ -134,107 +135,279 @@ export function Dashboard() {
       {/* TWO-COLUMN GRID */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
         
-        {/* LEADERBOARD TABLE (2/3 width) */}
-        <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="px-5 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider w-20 text-center">Rango</th>
-                <th className="px-5 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Participante</th>
-                <th className="px-5 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider text-right w-24">Puntos</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {users.map((user, index) => {
-                const isCurrentUser = user.uid === profile?.uid;
-                
-                return (
-                  <motion.tr 
-                    key={user.uid}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: Math.min(index * 0.04, 0.8) }}
-                    className={`${isCurrentUser ? "bg-indigo-50/25 font-semibold" : index === 0 ? "bg-amber-50/20" : ""}`}
-                  >
-                    {/* Rank Badge Column */}
-                    <td className="px-5 py-4 text-center">
-                      <div className="flex items-center justify-center">
-                        {index === 0 ? (
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-yellow-400 to-amber-500 flex items-center justify-center text-white font-black shadow-sm ring-4 ring-yellow-100 text-sm">
-                            1
-                          </div>
-                        ) : index === 1 ? (
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-slate-300 to-slate-400 flex items-center justify-center text-white font-black shadow-sm ring-4 ring-slate-100 text-sm">
-                            2
-                          </div>
-                        ) : index === 2 ? (
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-600 to-amber-700/80 flex items-center justify-center text-white font-black shadow-sm ring-4 ring-amber-150 text-sm">
-                            3
-                          </div>
-                        ) : (
-                          <span className="text-slate-400 font-bold font-mono text-sm">{index + 1}</span>
-                        )}
-                      </div>
-                    </td>
+        {/* LEADERBOARD / ENROLLED TABS CONTAINER (2/3 width) */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Tab Selector */}
+          <div className="flex bg-slate-100 p-1 rounded-2xl w-fit border border-slate-200">
+            <button
+              onClick={() => setActiveTab('leaderboard')}
+              className={`flex items-center gap-2 px-5 py-2.5 text-xs sm:text-sm font-black rounded-xl transition-all cursor-pointer ${
+                activeTab === 'leaderboard'
+                  ? 'bg-white text-indigo-600 shadow-sm font-sans'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Trophy className="w-4 h-4 text-amber-500" />
+              Tabla de Posiciones
+            </button>
+            <button
+              onClick={() => setActiveTab('registered')}
+              className={`flex items-center gap-2 px-5 py-2.5 text-xs sm:text-sm font-black rounded-xl transition-all cursor-pointer ${
+                activeTab === 'registered'
+                  ? 'bg-white text-indigo-600 shadow-sm font-sans'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Users className="w-4 h-4 text-indigo-500" />
+              Inscritos y Progreso
+            </button>
+          </div>
 
-                    {/* Participant Avatar and Name */}
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-4">
-                        {/* Avatar bubble supporting photo or emoji */}
-                        <div className="w-11 h-11 rounded-full bg-slate-100 border-2 border-slate-200 flex items-center justify-center text-slate-700 overflow-hidden shrink-0 relative shadow-sm ring-2 ring-transparent group-hover:scale-105 transition-transform">
-                          {user.avatarUrl ? (
-                            <img 
-                              src={user.avatarUrl} 
-                              alt={user.name} 
-                              className="w-full h-full object-cover"
-                              referrerPolicy="no-referrer"
-                              onError={(e) => {
-                                // Fallback if image fails to load
-                                e.currentTarget.style.display = 'none';
-                              }}
-                            />
-                          ) : null}
-                          
-                          {/* If no URL, or if URL image fails to display, show Emoji or Name character */}
-                          {!user.avatarUrl ? (
-                            user.avatarEmoji ? (
-                              <span className="text-2xl leading-none select-none">{user.avatarEmoji}</span>
+          {activeTab === 'leaderboard' ? (
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200">
+                    <th className="px-5 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider w-20 text-center font-display">Rango</th>
+                    <th className="px-5 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider font-display">Participante</th>
+                    <th className="px-5 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider text-right w-24 font-display">Puntos</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {users.map((user, index) => {
+                    const isCurrentUser = user.uid === profile?.uid;
+                    
+                    return (
+                      <motion.tr 
+                        key={user.uid}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: Math.min(index * 0.04, 0.8) }}
+                        className={`${isCurrentUser ? "bg-indigo-50/25 font-semibold" : index === 0 ? "bg-amber-50/20" : ""}`}
+                      >
+                        {/* Rank Badge Column */}
+                        <td className="px-5 py-4 text-center">
+                          <div className="flex items-center justify-center">
+                            {index === 0 ? (
+                              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-yellow-400 to-amber-500 flex items-center justify-center text-white font-black shadow-sm ring-4 ring-yellow-100 text-sm">
+                                1
+                              </div>
+                            ) : index === 1 ? (
+                              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-slate-300 to-slate-400 flex items-center justify-center text-white font-black shadow-sm ring-4 ring-slate-100 text-sm">
+                                2
+                              </div>
+                            ) : index === 2 ? (
+                              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-600 to-amber-700/80 flex items-center justify-center text-white font-black shadow-sm ring-4 ring-amber-150 text-sm">
+                                3
+                              </div>
                             ) : (
-                              <span className="font-bold text-indigo-600 text-base">{user.name.charAt(0).toUpperCase()}</span>
-                            )
-                          ) : null}
-                        </div>
-
-                        <div>
-                          <div className="font-bold text-slate-900 flex items-center gap-1.5 text-sm sm:text-base">
-                            <span>{user.name}</span>
-                            {isCurrentUser && (
-                              <span className="px-2 py-0.5 text-[9px] font-black bg-indigo-100 text-indigo-700 rounded-full uppercase tracking-wider">
-                                Tú
-                              </span>
+                              <span className="text-slate-400 font-bold font-mono text-sm">{index + 1}</span>
                             )}
                           </div>
-                          <div className="text-xs text-slate-400 select-all font-mono">{user.email}</div>
-                        </div>
-                      </div>
-                    </td>
+                        </td>
 
-                    {/* Points Total */}
-                    <td className="px-5 py-4 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <span className="text-lg sm:text-2xl font-black text-indigo-600 font-mono">{user.totalPoints}</span>
-                        <span className="text-[10px] text-slate-400 font-bold uppercase">Pts</span>
-                      </div>
-                    </td>
-                  </motion.tr>
-                );
-              })}
-            </tbody>
-          </table>
-          
-          {users.length === 0 && (
-            <div className="text-center py-12 text-slate-400 font-medium">
-              No hay participantes registrados.
+                        {/* Participant Avatar and Name */}
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-4">
+                            {/* Avatar bubble supporting photo or emoji */}
+                            <div className="w-11 h-11 rounded-full bg-slate-100 border-2 border-slate-200 flex items-center justify-center text-slate-700 overflow-hidden shrink-0 relative shadow-sm ring-2 ring-transparent transition-transform">
+                              {user.avatarUrl ? (
+                                <img 
+                                  src={user.avatarUrl} 
+                                  alt={user.name} 
+                                  className="w-full h-full object-cover"
+                                  referrerPolicy="no-referrer"
+                                  onError={(e) => {
+                                    e.currentTarget.style.display = 'none';
+                                  }}
+                                />
+                              ) : null}
+                              
+                              {/* If no URL, or if URL image fails to display, show Emoji or Name character */}
+                              {!user.avatarUrl ? (
+                                user.avatarEmoji ? (
+                                  <span className="text-2xl leading-none select-none">{user.avatarEmoji}</span>
+                                ) : (
+                                  <span className="font-bold text-indigo-600 text-base">{user.name.charAt(0).toUpperCase()}</span>
+                                )
+                              ) : null}
+                            </div>
+
+                            <div>
+                              <div className="font-bold text-slate-900 flex items-center gap-1.5 text-sm sm:text-base">
+                                <span>{user.name}</span>
+                                {isCurrentUser && (
+                                  <span className="px-2 py-0.5 text-[9px] font-black bg-indigo-100 text-indigo-700 rounded-full uppercase tracking-wider">
+                                    Tú
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-xs text-slate-400 select-all font-mono">{user.email}</div>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Points Total */}
+                        <td className="px-5 py-4 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <span className="text-lg sm:text-2xl font-black text-indigo-600 font-mono">{user.totalPoints}</span>
+                            <span className="text-[10px] text-slate-400 font-bold uppercase font-sans">Pts</span>
+                          </div>
+                        </td>
+                      </motion.tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+              {users.length === 0 && (
+                <div className="text-center py-12 text-slate-400 font-medium">
+                  No hay participantes registrados.
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200">
+                    <th className="px-5 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider font-display">Participante</th>
+                    <th className="px-5 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider hidden sm:table-cell w-40 font-display">Partidos Fase Grupos</th>
+                    <th className="px-5 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider hidden sm:table-cell w-36 font-display">Parley Especial</th>
+                    <th className="px-5 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider text-center w-36 font-display">Condición</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {[...users]
+                    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                    .map((user, index) => {
+                      const isCurrentUser = user.uid === profile?.uid;
+                      const predCount = user.predictionsCount || 0;
+                      const predPct = Math.round((predCount / 72) * 100);
+                      const parlCount = user.parleyCount || 0;
+                      const parlPct = Math.round((parlCount / 8) * 100);
+                      const isCompleted = user.completed || (predCount === 72 && parlCount === 8);
+
+                      return (
+                        <motion.tr 
+                          key={user.uid}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: Math.min(index * 0.04, 0.8) }}
+                          className={`${isCurrentUser ? "bg-indigo-50/25 font-semibold" : ""}`}
+                        >
+                          {/* Participant Info */}
+                          <td className="px-5 py-4">
+                            <div className="flex items-center gap-4">
+                              <div className="w-11 h-11 rounded-full bg-slate-100 border-2 border-slate-200 flex items-center justify-center text-slate-700 overflow-hidden shrink-0 relative shadow-sm ring-2 ring-transparent transition-transform">
+                                {user.avatarUrl ? (
+                                  <img 
+                                    src={user.avatarUrl} 
+                                    alt={user.name} 
+                                    className="w-full h-full object-cover"
+                                    referrerPolicy="no-referrer"
+                                    onError={(e) => {
+                                      e.currentTarget.style.display = 'none';
+                                    }}
+                                  />
+                                ) : null}
+                                
+                                {!user.avatarUrl ? (
+                                  user.avatarEmoji ? (
+                                    <span className="text-2xl leading-none select-none">{user.avatarEmoji}</span>
+                                  ) : (
+                                    <span className="font-bold text-indigo-600 text-base">{user.name.charAt(0).toUpperCase()}</span>
+                                  )
+                                ) : null}
+                              </div>
+
+                              <div>
+                                <div className="font-bold text-slate-900 flex items-center gap-1.5 text-sm sm:text-base font-sans">
+                                  <span>{user.name}</span>
+                                  {isCurrentUser && (
+                                    <span className="px-2 py-0.5 text-[9px] font-black bg-indigo-100 text-indigo-700 rounded-full uppercase tracking-wider">
+                                      Tú
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-xs text-slate-400 select-all font-mono">{user.email}</div>
+                              </div>
+                            </div>
+
+                            {/* Mobile Info view */}
+                            <div className="mt-3 block sm:hidden space-y-2">
+                              <div className="flex justify-between items-center text-xs">
+                                <span className="font-bold text-slate-400 uppercase tracking-widest text-[9px]">Partidos:</span>
+                                <span className="font-mono font-bold text-slate-700">{predCount}/72 ({predPct}%)</span>
+                              </div>
+                              <div className="flex justify-between items-center text-xs">
+                                <span className="font-bold text-slate-400 uppercase tracking-widest text-[9px]">Parley:</span>
+                                <span className="font-mono font-bold text-slate-700">{parlCount}/8 ({parlPct}%)</span>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Match Predictions Progress */}
+                          <td className="px-5 py-4 hidden sm:table-cell">
+                            <div className="space-y-1 max-w-[140px]">
+                              <div className="flex justify-between text-[11px] font-mono font-black text-slate-600">
+                                <span>{predCount} / 72</span>
+                                <span>{predPct}%</span>
+                              </div>
+                              <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                <div 
+                                  className={`h-full rounded-full transition-all duration-500 ${
+                                    predCount === 72 ? 'bg-emerald-500' : 'bg-indigo-500'
+                                  }`} 
+                                  style={{ width: `${predPct}%` }}
+                                ></div>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Parley Questions Progress */}
+                          <td className="px-5 py-4 hidden sm:table-cell">
+                            <div className="space-y-1 max-w-[130px]">
+                              <div className="flex justify-between text-[11px] font-mono font-black text-slate-600">
+                                <span>{parlCount} / 8</span>
+                                <span>{parlPct}%</span>
+                              </div>
+                              <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                <div 
+                                  className={`h-full rounded-full transition-all duration-500 ${
+                                    parlCount === 8 ? 'bg-emerald-500' : 'bg-indigo-500'
+                                  }`} 
+                                  style={{ width: `${parlPct}%` }}
+                                ></div>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Completion Status Badge */}
+                          <td className="px-5 py-4 text-center">
+                            <div className="flex justify-center">
+                              {isCompleted ? (
+                                <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-black bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-sm leading-none shrink-0">
+                                  <Check className="w-3.5 h-3.5 stroke-[3]" /> Completado
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-black bg-amber-50 text-amber-700 border border-amber-200 shadow-sm leading-none shrink-0" title={`${72 - predCount} partidos y ${8 - parlCount} parleys pendientes`}>
+                                  <AlertCircle className="w-3.5 h-3.5 text-amber-500 stroke-[3]" /> Aún no completado
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </motion.tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+
+              {users.length === 0 && (
+                <div className="text-center py-12 text-slate-400 font-medium">
+                  No hay participantes registrados.
+                </div>
+              )}
             </div>
           )}
         </div>
