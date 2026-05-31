@@ -18,6 +18,56 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Helper function to safely read/write user profile to Firestore with retries
+async function ensureUserProfileExists(authUser: User, customName?: string, retries = 3): Promise<UserProfile> {
+  const docRef = doc(db, 'users', authUser.uid);
+  
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const data = docSnap.data() as UserProfile;
+        // If a custom name is specified (e.g. from registration) and differs from the saved one, update it.
+        if (customName && data.name !== customName) {
+          await updateDoc(docRef, { name: customName });
+          data.name = customName;
+        }
+        return data;
+      }
+      
+      const newProfile: UserProfile = {
+        uid: authUser.uid,
+        name: customName || authUser.displayName || 'Participante',
+        email: authUser.email || '',
+        role: authUser.email?.toLowerCase() === 'geologol@gmail.com' ? 'admin' : 'participant',
+        totalPoints: 0,
+        avatarEmoji: '⚽',
+        predictionsCount: 0,
+        parleyCount: 0,
+        completed: false
+      };
+      
+      await setDoc(docRef, newProfile);
+      return newProfile;
+    } catch (error: any) {
+      console.warn(`[ensureUserProfileExists] Attempt ${attempt} failed:`, error);
+      
+      const isPermissionDenied = error?.code === 'permission-denied' || 
+                                 error?.message?.includes('permission') ||
+                                 String(error).toLowerCase().includes('permission');
+                                 
+      if (isPermissionDenied && attempt < retries) {
+        // Wait 800ms for the Auth token to propagate before retrying
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        continue;
+      }
+      throw error;
+    }
+  }
+  
+  throw new Error("Failed to ensure user profile exists after retries");
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -37,49 +87,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (authUser) {
           // Trigger background auto-seeding of matches & parley templates
           autoSeedCollections(db);
-          // Sync current user completion counts
-          syncUserCompletionData(authUser.uid);
 
+          // 1. Ensure user profile exists in Firestore (resolves token propagation race conditions)
+          try {
+            await ensureUserProfileExists(authUser);
+            // Sync user completion counts
+            syncUserCompletionData(authUser.uid);
+          } catch (e) {
+            console.error("Critical error ensuring user profile exists on auth state change:", e);
+          }
+
+          // 2. Start the real-time snapshot listener on the profile document
           const docRef = doc(db, 'users', authUser.uid);
-          
-          unsubscribeProfile = onSnapshot(docRef, async (docSnap) => {
+          unsubscribeProfile = onSnapshot(docRef, (docSnap) => {
             try {
               if (docSnap.exists()) {
                 const data = docSnap.data() as UserProfile;
                 if (authUser.email?.toLowerCase() === 'geologol@gmail.com' && data.role !== 'admin') {
-                  try {
-                    await updateDoc(docRef, { role: 'admin' });
-                  } catch (e) {
+                  updateDoc(docRef, { role: 'admin' }).catch(e => {
                     console.error("Error auto-updating admin role:", e);
-                  }
+                  });
                   setProfile({ ...data, role: 'admin' });
                 } else {
                   setProfile(data);
                 }
               } else {
-                // Create default profile (e.g. for Google Login where profile wasn't pre-created)
-                const newProfile: UserProfile = {
-                  uid: authUser.uid,
-                  name: authUser.displayName || 'Participante',
-                  email: authUser.email || '',
-                  role: authUser.email?.toLowerCase() === 'geologol@gmail.com' ? 'admin' : 'participant',
-                  totalPoints: 0,
-                  avatarEmoji: '⚽', // Default emoji
-                  predictionsCount: 0,
-                  parleyCount: 0,
-                  completed: false
-                };
-                await setDoc(docRef, newProfile);
-                setProfile(newProfile);
+                setProfile(null);
               }
             } catch (error) {
-              console.error("Error loading or creating user profile:", error);
+              console.error("Error handling user profile snapshot:", error);
             } finally {
-              // Set loading false AFTER profile data is actually available or failed
               setLoading(false);
             }
           }, (error) => {
-            console.error("Error in profile snapshot:", error);
+            console.error("Error in profile snapshot listener:", error);
             setLoading(false);
           });
         } else {
@@ -102,7 +143,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const loginWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
+    const userCredential = await signInWithPopup(auth, provider);
+    const authUser = userCredential.user;
+    try {
+      await ensureUserProfileExists(authUser);
+    } catch (e) {
+      console.error("Error ensuring user profile exists on Google login:", e);
+    }
   };
 
   const loginWithEmail = async (email: string, password: string) => {
@@ -120,25 +167,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error("Error setting displayName:", e);
     }
 
-    // Write user profile to Firestore immediately to prevent race conditions (like name defaulting to 'Participante')
+    // Write user profile to Firestore immediately to prevent race conditions
     try {
-      const docRef = doc(db, 'users', authUser.uid);
-      await setDoc(docRef, {
-        uid: authUser.uid,
-        name: name,
-        email: authUser.email || email,
-        role: authUser.email?.toLowerCase() === 'geologol@gmail.com' ? 'admin' : 'participant',
-        totalPoints: 0,
-        avatarEmoji: '⚽',
-        predictionsCount: 0,
-        parleyCount: 0,
-        completed: false
-      }, { merge: true });
+      await ensureUserProfileExists(authUser, name);
     } catch (e) {
       console.error("Error creating user profile in registration:", e);
     }
 
-    // Try to send verification email but don't fail the registration if it fails
+    // Try to send verification email
     try {
       await sendEmailVerification(authUser);
     } catch (e) {

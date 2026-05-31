@@ -228,21 +228,21 @@ export function Dashboard() {
                                 user.avatarEmoji ? (
                                   <span className="text-2xl leading-none select-none">{user.avatarEmoji}</span>
                                 ) : (
-                                  <span className="font-bold text-indigo-600 text-base">{user.name.charAt(0).toUpperCase()}</span>
+                                  <span className="font-bold text-indigo-600 text-base">{(user.name || 'P').charAt(0).toUpperCase()}</span>
                                 )
                               ) : null}
                             </div>
 
                             <div>
                               <div className="font-bold text-slate-900 flex items-center gap-1.5 text-sm sm:text-base">
-                                <span>{user.name}</span>
+                                <span>{user.name || 'Participante'}</span>
                                 {isCurrentUser && (
                                   <span className="px-2 py-0.5 text-[9px] font-black bg-indigo-100 text-indigo-700 rounded-full uppercase tracking-wider">
                                     Tú
                                   </span>
                                 )}
                               </div>
-                              <div className="text-xs text-slate-400 select-all font-mono">{user.email}</div>
+                              <div className="text-xs text-slate-400 select-all font-mono">{user.email || 'Sin correo'}</div>
                             </div>
                           </div>
                         </td>
@@ -316,21 +316,21 @@ export function Dashboard() {
                                   user.avatarEmoji ? (
                                     <span className="text-2xl leading-none select-none">{user.avatarEmoji}</span>
                                   ) : (
-                                    <span className="font-bold text-indigo-600 text-base">{user.name.charAt(0).toUpperCase()}</span>
+                                    <span className="font-bold text-indigo-600 text-base">{(user.name || 'P').charAt(0).toUpperCase()}</span>
                                   )
                                 ) : null}
                               </div>
 
                               <div>
                                 <div className="font-bold text-slate-900 flex items-center gap-1.5 text-sm sm:text-base font-sans">
-                                  <span>{user.name}</span>
+                                  <span>{user.name || 'Participante'}</span>
                                   {isCurrentUser && (
                                     <span className="px-2 py-0.5 text-[9px] font-black bg-indigo-100 text-indigo-700 rounded-full uppercase tracking-wider">
                                       Tú
                                     </span>
                                   )}
                                 </div>
-                                <div className="text-xs text-slate-400 select-all font-mono">{user.email}</div>
+                                <div className="text-xs text-slate-400 select-all font-mono">{user.email || 'Sin correo'}</div>
                               </div>
                             </div>
 

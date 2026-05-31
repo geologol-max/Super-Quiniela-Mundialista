@@ -56,7 +56,7 @@ export function Navbar() {
                   profile?.avatarEmoji ? (
                     <span className="text-lg leading-none select-none">{profile.avatarEmoji}</span>
                   ) : (
-                    <span className="font-bold text-indigo-600 text-xs">{profile?.name.charAt(0).toUpperCase()}</span>
+                    <span className="font-bold text-indigo-600 text-xs">{(profile?.name || 'P').charAt(0).toUpperCase()}</span>
                   )
                 ) : null}
               </div>
