@@ -91,22 +91,134 @@ export function Admin() {
   };
 
   const recalculateLeaderboard = async () => {
-    const usersSnap = await getDocs(collection(db, 'users'));
-    setUsersCount(usersSnap.size);
-    for (const uDoc of usersSnap.docs) {
-      const userId = uDoc.id;
-      const predsSnap = await getDocs(query(collection(db, 'predictions'), where('userId', '==', userId)));
-      let total = 0;
-      predsSnap.docs.forEach(d => {
-        total += (d.data().points || 0);
+    setIsSeeding(true);
+    try {
+      // 1. Get all active matches and parley questions
+      const matchesSnap = await getDocs(collection(db, 'matches'));
+      const activeMatchIds = new Set(matchesSnap.docs.map(d => d.id));
+      
+      const parleyQuestionsSnap = await getDocs(collection(db, 'parleyQuestions'));
+      const activeQuestionIds = new Set(parleyQuestionsSnap.docs.map(d => d.id));
+      
+      // 2. Get all predictions and parley answers
+      const predsSnap = await getDocs(collection(db, 'predictions'));
+      const parleyAnswersSnap = await getDocs(collection(db, 'parleyAnswers'));
+      
+      // 3. Get existing users
+      const usersSnap = await getDocs(collection(db, 'users'));
+      const existingUserIds = new Set(usersSnap.docs.map(d => d.id));
+      
+      // 4. Group data by userId
+      const userStats: { 
+        [userId: string]: { 
+          points: number; 
+          predsCount: number; 
+          parleysCount: number; 
+        } 
+      } = {};
+      
+      // Process predictions
+      predsSnap.docs.forEach(docSnap => {
+        const data = docSnap.data();
+        const userId = data.userId;
+        if (!userId) return;
+        
+        if (!userStats[userId]) {
+          userStats[userId] = { points: 0, predsCount: 0, parleysCount: 0 };
+        }
+        
+        const isMatchActive = activeMatchIds.has(data.matchId);
+        const hasScores = data.scoreA !== undefined && data.scoreA !== null && !isNaN(Number(data.scoreA)) &&
+                           data.scoreB !== undefined && data.scoreB !== null && !isNaN(Number(data.scoreB));
+                           
+        if (isMatchActive && hasScores) {
+          userStats[userId].predsCount += 1;
+        }
+        
+        userStats[userId].points += (data.points || 0);
       });
-      const parleySnap = await getDocs(query(collection(db, 'parleyAnswers'), where('userId', '==', userId)));
-      parleySnap.docs.forEach(d => {
-        total += (d.data().points || 0);
+      
+      // Process parley answers
+      parleyAnswersSnap.docs.forEach(docSnap => {
+        const data = docSnap.data();
+        const userId = data.userId;
+        if (!userId) return;
+        
+        if (!userStats[userId]) {
+          userStats[userId] = { points: 0, predsCount: 0, parleysCount: 0 };
+        }
+        
+        const isQuestionActive = activeQuestionIds.has(data.questionId);
+        const hasAnswer = data.answer !== undefined && data.answer !== null && String(data.answer).trim() !== '';
+        
+        if (isQuestionActive && hasAnswer) {
+          userStats[userId].parleysCount += 1;
+        }
+        
+        userStats[userId].points += (data.points || 0);
       });
-      await updateDoc(uDoc.ref, { totalPoints: total });
+      
+      // 5. Update or create profiles
+      let updatedCount = 0;
+      let restoredCount = 0;
+      const targetMatches = activeMatchIds.size || 72;
+      const targetParleys = activeQuestionIds.size || 8;
+      
+      for (const userId of Object.keys(userStats)) {
+        const stats = userStats[userId];
+        const completed = stats.predsCount === targetMatches && stats.parleysCount === targetParleys;
+        const userRef = doc(db, 'users', userId);
+        
+        if (existingUserIds.has(userId)) {
+          // Update existing
+          await updateDoc(userRef, {
+            totalPoints: stats.points,
+            predictionsCount: stats.predsCount,
+            parleyCount: stats.parleysCount,
+            completed: completed
+          });
+          updatedCount++;
+        } else {
+          // Restore orphaned profile
+          const newProfile = {
+            uid: userId,
+            name: `Participante Recuperado (${userId.substring(0, 5)})`,
+            email: 'Pendiente de inicio de sesión',
+            role: 'participant',
+            totalPoints: stats.points,
+            avatarEmoji: '⚽',
+            predictionsCount: stats.predsCount,
+            parleyCount: stats.parleysCount,
+            completed: completed
+          };
+          await setDoc(userRef, newProfile);
+          restoredCount++;
+        }
+      }
+      
+      // Sync users who exist in users but have no predictions/answers
+      for (const uDoc of usersSnap.docs) {
+        const userId = uDoc.id;
+        if (!userStats[userId]) {
+          await updateDoc(uDoc.ref, {
+            predictionsCount: 0,
+            parleyCount: 0,
+            completed: false
+          });
+          updatedCount++;
+        }
+      }
+      
+      await fetchUsersCount();
+      alert(`Sincronización masiva finalizada:\n- Perfiles existentes actualizados: ${updatedCount}\n- Perfiles huérfanos creados: ${restoredCount}`);
+    } catch (e) {
+      console.error("Error in recalculateLeaderboard:", e);
+      alert("Error al actualizar la tabla: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setIsSeeding(false);
     }
   };
+
 
   const seedSampleMatches = async () => {
     setIsSeeding(true);
@@ -168,10 +280,11 @@ export function Admin() {
         </div>
         <button 
           onClick={recalculateLeaderboard}
-          className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition font-bold"
+          disabled={isSeeding}
+          className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 disabled:opacity-50 transition font-bold"
         >
           <RefreshCw className="w-4 h-4" />
-          Actualizar Leaderboard
+          Sincronizar y Recuperar Usuarios
         </button>
       </header>
 
