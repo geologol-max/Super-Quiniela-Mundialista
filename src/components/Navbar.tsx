@@ -39,7 +39,7 @@ export function Navbar() {
             )}
             <div className="h-6 w-px bg-slate-200 hidden sm:block"></div>
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-705 overflow-hidden shrink-0 relative shadow-sm">
+              <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 overflow-hidden shrink-0 relative shadow-sm">
                 {profile?.avatarUrl ? (
                   <img 
                     src={profile.avatarUrl} 

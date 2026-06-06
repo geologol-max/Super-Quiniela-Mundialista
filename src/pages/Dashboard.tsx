@@ -45,8 +45,16 @@ export function Dashboard() {
       const usersData = snapshot.docs.map(doc => {
         const data = doc.data();
         return {
-          ...data,
-          totalPoints: typeof data.totalPoints === 'number' ? data.totalPoints : 0
+          uid: doc.id,
+          name: String(data.name || 'Participante'),
+          email: String(data.email || 'Sin correo'),
+          avatarUrl: String(data.avatarUrl || ''),
+          avatarEmoji: String(data.avatarEmoji || '⚽'),
+          role: String(data.role || 'participant'),
+          totalPoints: typeof data.totalPoints === 'number' ? data.totalPoints : 0,
+          predictionsCount: typeof data.predictionsCount === 'number' ? data.predictionsCount : 0,
+          parleyCount: typeof data.parleyCount === 'number' ? data.parleyCount : 0,
+          completed: !!data.completed
         };
       }) as UserProfile[];
 
@@ -57,7 +65,7 @@ export function Dashboard() {
         if (pointsB !== pointsA) {
           return pointsB - pointsA;
         }
-        return (a.name || '').localeCompare(b.name || '');
+        return a.name.localeCompare(b.name);
       });
 
       setUsers(usersData);

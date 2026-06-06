@@ -1,17 +1,14 @@
-import React, { Suspense } from 'react';
 import { Navbar } from './components/Navbar';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Landing } from './pages/Landing';
 import { Auth } from './pages/Auth';
+import { Dashboard } from './pages/Dashboard';
+import { Predictions } from './pages/Predictions';
+import { Admin } from './pages/Admin';
+import { Parley } from './pages/Parley';
 import { Rules } from './pages/Rules';
 import { useAuth } from './contexts/AuthContext';
 import { CountdownBanner } from './components/CountdownBanner';
-
-// Lazy load heavy pages for faster initial bundle
-const Dashboard = React.lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
-const Predictions = React.lazy(() => import('./pages/Predictions').then(m => ({ default: m.Predictions })));
-const Admin = React.lazy(() => import('./pages/Admin').then(m => ({ default: m.Admin })));
-const Parley = React.lazy(() => import('./pages/Parley').then(m => ({ default: m.Parley })));
 
 function LoadingFallback() {
   return (
@@ -40,17 +37,15 @@ export default function App() {
       <Navbar />
       <main className="container mx-auto px-4 py-8 max-w-6xl">
         <CountdownBanner />
-        <Suspense fallback={<LoadingFallback />}>
-          <Routes>
-            <Route path="/" element={<Landing />} />
-            <Route path="/auth" element={<Auth />} />
-            <Route path="/rules" element={<Rules />} />
-            <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-            <Route path="/predictions" element={<PrivateRoute><Predictions /></PrivateRoute>} />
-            <Route path="/parley" element={<PrivateRoute><Parley /></PrivateRoute>} />
-            <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
-          </Routes>
-        </Suspense>
+        <Routes>
+          <Route path="/" element={<Landing />} />
+          <Route path="/auth" element={<Auth />} />
+          <Route path="/rules" element={<Rules />} />
+          <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+          <Route path="/predictions" element={<PrivateRoute><Predictions /></PrivateRoute>} />
+          <Route path="/parley" element={<PrivateRoute><Parley /></PrivateRoute>} />
+          <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
+        </Routes>
       </main>
     </div>
   );

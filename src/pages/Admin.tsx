@@ -44,7 +44,7 @@ export function Admin() {
       if (idxA !== -1 && idxB !== -1) return idxA - idxB;
       if (idxA !== -1) return -1;
       if (idxB !== -1) return 1;
-      return a.question.localeCompare(b.question);
+      return String(a.question || '').localeCompare(String(b.question || ''));
     });
     setParleyQuestions(list);
   };
