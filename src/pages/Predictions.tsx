@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { collection, query, onSnapshot, doc, setDoc, getDocs, where, writeBatch } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -671,7 +671,7 @@ export function Predictions() {
   }
 
   // Filter matches for selected group
-  const groupMatches = matches.filter(m => m.group === selectedGroup);
+  const groupMatches = useMemo(() => matches.filter(m => m.group === selectedGroup), [matches, selectedGroup]);
 
   // Standings calculation based on:
   // 1) Finished matches scores (highest priority)
@@ -767,9 +767,9 @@ export function Predictions() {
     });
   };
 
-  const groupStandings = calculateGroupStandings();
+  const groupStandings = useMemo(() => calculateGroupStandings(), [groupMatches, predictions]);
 
-  const calculateAllGroupStandings = () => {
+  const calculateAllGroupStandings = useMemo(() => {
     const GROUPS_LIST = [
       'Grupo A', 'Grupo B', 'Grupo C', 'Grupo D', 'Grupo E', 'Grupo F',
       'Grupo G', 'Grupo H', 'Grupo I', 'Grupo J', 'Grupo K', 'Grupo L'
@@ -865,10 +865,10 @@ export function Predictions() {
     });
 
     return allStandings;
-  };
+  }, [matches, predictions]);
 
   const getThirdPlacedTeamsStats = () => {
-    const groupStandingsAll = calculateAllGroupStandings();
+    const groupStandingsAll = calculateAllGroupStandings;
     const thirds: any[] = [];
     Object.entries(groupStandingsAll).forEach(([groupName, teams]) => {
       if (teams[2]) {
@@ -1523,7 +1523,7 @@ export function Predictions() {
 
                 <div className="space-y-4">
                   {(() => {
-                    const groupStandingsAll = calculateAllGroupStandings();
+                    const groupStandingsAll = calculateAllGroupStandings;
                     const top8Thirds = getThirdPlacedTeamsStats().slice(0, 8);
 
                     const filteredKoConfigs = KNOCKOUT_MATCHES_CONFIG.filter(cfg => {

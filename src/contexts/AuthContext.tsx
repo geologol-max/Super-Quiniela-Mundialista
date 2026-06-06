@@ -4,7 +4,7 @@ import { doc, getDoc, setDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { UserProfile } from '../types';
 import { autoSeedCollections } from '../lib/autoSeed';
-import { syncUserCompletionData } from '../lib/completionSync';
+import { syncUserCompletionData, syncUserCompletionDataImmediate } from '../lib/completionSync';
 
 interface AuthContextType {
   user: User | null;
@@ -91,8 +91,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // 1. Ensure user profile exists in Firestore (resolves token propagation race conditions)
           try {
             await ensureUserProfileExists(authUser);
-            // Sync user completion counts
-            syncUserCompletionData(authUser.uid);
+            // Sync user completion counts immediately so they appear in the leaderboard
+            syncUserCompletionDataImmediate(authUser.uid);
           } catch (e) {
             console.error("Critical error ensuring user profile exists on auth state change:", e);
           }
@@ -170,6 +170,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Write user profile to Firestore immediately to prevent race conditions
     try {
       await ensureUserProfileExists(authUser, name);
+      // Immediate sync so the new user appears in the leaderboard right away
+      await syncUserCompletionDataImmediate(authUser.uid);
     } catch (e) {
       console.error("Error creating user profile in registration:", e);
     }
