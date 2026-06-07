@@ -1,4 +1,4 @@
-import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, getDocsFromServer, doc, updateDoc } from 'firebase/firestore';
 import { db } from './firebase';
 
 // In-memory cache for active IDs to avoid re-fetching on every save
@@ -22,8 +22,8 @@ async function refreshCache(force = false) {
   }
 
   const [matchesSnap, parleySnap] = await Promise.all([
-    getDocs(collection(db, 'matches')),
-    getDocs(collection(db, 'parleyQuestions'))
+    getDocsFromServer(collection(db, 'matches')),
+    getDocsFromServer(collection(db, 'parleyQuestions'))
   ]);
 
   cachedMatchIds = new Set(matchesSnap.docs.map(d => d.id));
@@ -44,16 +44,17 @@ export function invalidateCompletionCache() {
 
 /**
  * Core sync logic — calculates and updates user predictions progress.
+ * Uses getDocsFromServer to ensure fresh data from Firestore server.
  */
 async function doSync(userId: string): Promise<{ predictionsCount: number; parleyCount: number; completed: boolean } | null> {
   if (!userId) return null;
   try {
     const { matchIds: activeMatchIds, questionIds: activeQuestionIds } = await refreshCache();
 
-    // Fetch user predictions and parley answers in parallel
+    // Fetch user predictions and parley answers from SERVER (not cache) in parallel
     const [predsSnap, parleySnap] = await Promise.all([
-      getDocs(query(collection(db, 'predictions'), where('userId', '==', userId))),
-      getDocs(query(collection(db, 'parleyAnswers'), where('userId', '==', userId)))
+      getDocsFromServer(query(collection(db, 'predictions'), where('userId', '==', userId))),
+      getDocsFromServer(query(collection(db, 'parleyAnswers'), where('userId', '==', userId)))
     ]);
 
     const predictionsCount = predsSnap.docs.filter(d => {

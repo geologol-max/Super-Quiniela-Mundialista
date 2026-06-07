@@ -1,9 +1,9 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { UserProfile } from '../types';
-import { Trophy, Medal, Smile, Image as ImageIcon, Check, Save, Sparkles, User, RefreshCw, AlertCircle, Users, BarChart2, Clock, Target, Zap } from 'lucide-react';
+import { Trophy, Medal, Smile, Image as ImageIcon, Check, Save, Sparkles, User, RefreshCw, AlertCircle, Users, BarChart2, Clock, Target, Zap, Wifi, WifiOff } from 'lucide-react';
 import { motion } from 'motion/react';
 
 const PRESET_FLAGS = [
@@ -22,7 +22,16 @@ export function Dashboard() {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isConnected, setIsConnected] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const { profile } = useAuth();
+
+  // Force reload from server by incrementing refreshKey
+  const handleForceRefresh = useCallback(() => {
+    setLoading(true);
+    setRefreshKey(prev => prev + 1);
+  }, []);
 
   // Local state for profile edits
   const [editingName, setEditingName] = useState('');
@@ -41,7 +50,13 @@ export function Dashboard() {
   }, [profile]);
 
   useEffect(() => {
+    console.log(`[Dashboard] Subscribing to users collection (refresh #${refreshKey})...`);
+    setIsConnected(true);
+    
     const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
+      const source = snapshot.metadata.fromCache ? 'CACHE' : 'SERVER';
+      console.log(`[Dashboard] Received ${snapshot.docs.length} users from ${source}`);
+      
       const usersData = snapshot.docs.map(doc => {
         const data = doc.data();
         return {
@@ -70,9 +85,12 @@ export function Dashboard() {
 
       setUsers(usersData);
       setLoadError(null);
+      setIsConnected(!snapshot.metadata.fromCache);
+      setLastRefresh(new Date());
       setLoading(false);
     }, (error) => {
       console.error("Error loading leaderboard:", error);
+      setIsConnected(false);
       if (error.code === 'permission-denied') {
         setLoadError("Error de permisos (permission-denied) en Firestore. Asegúrate de haber publicado las reglas de seguridad para tu base de datos en la consola web de Firebase.");
       } else {
@@ -82,7 +100,7 @@ export function Dashboard() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [refreshKey]);
 
   // Memoize current user stats
   const myStats = useMemo(() => {
@@ -142,9 +160,31 @@ export function Dashboard() {
           <h1 className="text-3xl font-bold text-slate-900 font-display tracking-tight">Tabla de Posiciones</h1>
           <p className="text-slate-500">Compite contra tus amigos y escala en el ranking oficial</p>
         </div>
-        <div className="flex items-center gap-2 self-start text-indigo-600 bg-indigo-50 px-4 py-1.5 rounded-full text-sm font-bold shadow-sm">
-          <Trophy className="w-4 h-4 text-amber-500 animate-bounce" />
-          <span>{users.length} Participantes Activos</span>
+        <div className="flex items-center gap-3 self-start">
+          {/* Connection status indicator */}
+          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold shadow-sm border ${
+            isConnected 
+              ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+              : 'bg-amber-50 text-amber-700 border-amber-200'
+          }`}>
+            {isConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
+            <span>{isConnected ? 'En vivo' : 'Cache'}</span>
+          </div>
+          {/* Participant count */}
+          <div className="flex items-center gap-2 text-indigo-600 bg-indigo-50 px-4 py-1.5 rounded-full text-sm font-bold shadow-sm">
+            <Trophy className="w-4 h-4 text-amber-500 animate-bounce" />
+            <span>{users.length} Participantes</span>
+          </div>
+          {/* Refresh button */}
+          <button
+            onClick={handleForceRefresh}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-full text-xs font-bold transition-all active:scale-95 disabled:opacity-50 border border-slate-200"
+            title="Forzar recarga de datos desde el servidor"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Recargar</span>
+          </button>
         </div>
       </header>
 

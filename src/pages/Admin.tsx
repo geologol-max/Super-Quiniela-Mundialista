@@ -1,32 +1,58 @@
 import { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, doc, setDoc, query, orderBy, deleteDoc, where, updateDoc, writeBatch } from 'firebase/firestore';
+import { collection, addDoc, getDocs, getDocsFromServer, doc, setDoc, query, orderBy, deleteDoc, where, updateDoc, writeBatch, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Match, UserProfile, Prediction, calculateMatchPoints, ParleyQuestion } from '../types';
 import { WORLD_CUP_TEAMS, OFFICIAL_2026_MATCHES_SEED } from '../lib/constants';
-import { Plus, Trash2, RefreshCw, Trophy, Users, CheckCircle } from 'lucide-react';
+import { Plus, Trash2, RefreshCw, Trophy, Users, CheckCircle, Check, Clock, Mail, BarChart2 } from 'lucide-react';
 
 export function Admin() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [newMatch, setNewMatch] = useState<Partial<Match>>({ teamA: '', teamB: '', group: '', date: '', status: 'scheduled' });
   const [isSeeding, setIsSeeding] = useState(false);
   const [parleyQuestions, setParleyQuestions] = useState<ParleyQuestion[]>([]);
-  const [usersCount, setUsersCount] = useState<number | string>('...');
+  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
 
   useEffect(() => {
     fetchMatches();
     fetchParley();
-    fetchUsersCount();
+    
+    // Real-time listener for ALL users — the critical fix so admin always sees everyone
+    const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+      const source = snapshot.metadata.fromCache ? 'CACHE' : 'SERVER';
+      console.log(`[Admin] Received ${snapshot.docs.length} users from ${source}`);
+      
+      const usersData = snapshot.docs.map(d => {
+        const data = d.data();
+        return {
+          uid: d.id,
+          name: String(data.name || 'Participante'),
+          email: String(data.email || 'Sin correo'),
+          avatarUrl: String(data.avatarUrl || ''),
+          avatarEmoji: String(data.avatarEmoji || '⚽'),
+          role: String(data.role || 'participant'),
+          totalPoints: typeof data.totalPoints === 'number' ? data.totalPoints : 0,
+          predictionsCount: typeof data.predictionsCount === 'number' ? data.predictionsCount : 0,
+          parleyCount: typeof data.parleyCount === 'number' ? data.parleyCount : 0,
+          completed: !!data.completed
+        } as UserProfile;
+      });
+      
+      // Sort by totalPoints desc, then name
+      usersData.sort((a, b) => {
+        if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
+        return a.name.localeCompare(b.name);
+      });
+      
+      setAllUsers(usersData);
+    }, (error) => {
+      console.error('[Admin] Error in users snapshot:', error);
+    });
+    
+    return () => unsubUsers();
   }, []);
 
-  const fetchUsersCount = async () => {
-    try {
-      const snap = await getDocs(collection(db, 'users'));
-      setUsersCount(snap.size);
-    } catch (e) {
-      console.error("Error fetching users count:", e);
-      setUsersCount('Error');
-    }
-  };
+  // usersCount is now derived from the real-time allUsers array
+  const usersCount = allUsers.length;
 
   const fetchMatches = async () => {
     const q = query(collection(db, 'matches'), orderBy('date', 'asc'));
@@ -106,19 +132,19 @@ export function Admin() {
   const recalculateLeaderboard = async () => {
     setIsSeeding(true);
     try {
-      // 1. Get all active matches and parley questions
-      const matchesSnap = await getDocs(collection(db, 'matches'));
+      // 1. Get all active matches and parley questions FROM SERVER (not cache)
+      const matchesSnap = await getDocsFromServer(collection(db, 'matches'));
       const activeMatchIds = new Set(matchesSnap.docs.map(d => d.id));
       
-      const parleyQuestionsSnap = await getDocs(collection(db, 'parleyQuestions'));
+      const parleyQuestionsSnap = await getDocsFromServer(collection(db, 'parleyQuestions'));
       const activeQuestionIds = new Set(parleyQuestionsSnap.docs.map(d => d.id));
       
-      // 2. Get all predictions and parley answers
-      const predsSnap = await getDocs(collection(db, 'predictions'));
-      const parleyAnswersSnap = await getDocs(collection(db, 'parleyAnswers'));
+      // 2. Get all predictions and parley answers FROM SERVER
+      const predsSnap = await getDocsFromServer(collection(db, 'predictions'));
+      const parleyAnswersSnap = await getDocsFromServer(collection(db, 'parleyAnswers'));
       
-      // 3. Get existing users
-      const usersSnap = await getDocs(collection(db, 'users'));
+      // 3. Get existing users FROM SERVER
+      const usersSnap = await getDocsFromServer(collection(db, 'users'));
       const existingUserIds = new Set(usersSnap.docs.map(d => d.id));
       
       // 4. Group data by userId
@@ -222,7 +248,7 @@ export function Admin() {
         }
       }
       
-      await fetchUsersCount();
+      // allUsers will auto-update via the onSnapshot listener
       alert(`Sincronización masiva finalizada:\n- Perfiles existentes actualizados: ${updatedCount}\n- Perfiles huérfanos creados: ${restoredCount}`);
     } catch (e) {
       console.error("Error in recalculateLeaderboard:", e);
@@ -305,7 +331,7 @@ export function Admin() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
           <div className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1 flex items-center gap-2">
-            <Users className="w-4 h-4" /> Usuarios
+            <Users className="w-4 h-4" /> Usuarios Registrados
           </div>
           <div className="text-2xl font-black text-indigo-600">{usersCount}</div>
         </div>
@@ -315,7 +341,110 @@ export function Admin() {
           </div>
           <div className="text-2xl font-black text-indigo-600">{matches.length}</div>
         </div>
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1 flex items-center gap-2">
+            <CheckCircle className="w-4 h-4" /> Completados
+          </div>
+          <div className="text-2xl font-black text-emerald-600">{allUsers.filter(u => u.completed).length}</div>
+        </div>
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1 flex items-center gap-2">
+            <Clock className="w-4 h-4" /> Pendientes
+          </div>
+          <div className="text-2xl font-black text-amber-600">{allUsers.filter(u => !u.completed).length}</div>
+        </div>
       </div>
+
+      {/* PARTICIPANTS TABLE — Real-time view of all registered users */}
+      <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 bg-slate-50 border-b border-slate-200">
+          <div className="flex items-center gap-2">
+            <BarChart2 className="w-5 h-5 text-indigo-600" />
+            <h2 className="text-lg font-black text-slate-800">Participantes Inscritos (Tiempo Real)</h2>
+          </div>
+          <span className="text-xs font-black text-slate-400 bg-white px-3 py-1 rounded-full border border-slate-200">
+            {allUsers.length} inscritos
+          </span>
+        </div>
+        
+        {allUsers.length === 0 ? (
+          <div className="text-center py-12 text-slate-400 font-medium">
+            No hay participantes registrados aún.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200">
+                  <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider w-12 text-center">#</th>
+                  <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Participante</th>
+                  <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider"><Mail className="w-3.5 h-3.5 inline mr-1" />Correo</th>
+                  <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider text-center w-24">Partidos</th>
+                  <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider text-center w-24">Parley</th>
+                  <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider text-center w-20">Pts</th>
+                  <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider text-center w-24">Estado</th>
+                  <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider text-center w-16">Rol</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {allUsers.map((user, index) => {
+                  const predCount = user.predictionsCount || 0;
+                  const parlCount = user.parleyCount || 0;
+                  const isCompleted = user.completed || (predCount === 72 && parlCount === 8);
+                  
+                  return (
+                    <tr key={user.uid} className={`hover:bg-slate-50 transition-colors ${user.role === 'admin' ? 'bg-indigo-50/30' : ''}`}>
+                      <td className="px-4 py-3 text-center">
+                        <span className="text-sm font-bold text-slate-400 font-mono">{index + 1}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-sm shrink-0 overflow-hidden">
+                            {user.avatarUrl ? (
+                              <img src={user.avatarUrl} alt={user.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                            ) : (
+                              <span>{user.avatarEmoji || '⚽'}</span>
+                            )}
+                          </div>
+                          <span className="font-bold text-slate-800 text-sm">{user.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-xs text-slate-500 font-mono select-all">{user.email}</span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`text-sm font-black font-mono ${predCount === 72 ? 'text-emerald-600' : 'text-slate-600'}`}>{predCount}/72</span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`text-sm font-black font-mono ${parlCount === 8 ? 'text-emerald-600' : 'text-slate-600'}`}>{parlCount}/8</span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className="text-sm font-black text-indigo-600 font-mono">{user.totalPoints}</span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {isCompleted ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <Check className="w-3 h-3 stroke-[3]" /> Listo
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-50 text-amber-700 border border-amber-200">
+                            <Clock className="w-3 h-3 stroke-[3]" /> Pendiente
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                          user.role === 'admin' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'
+                        }`}>{user.role === 'admin' ? 'Admin' : 'User'}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       {/* Control Tabs (Implicit) */}
       <div className="space-y-8">
