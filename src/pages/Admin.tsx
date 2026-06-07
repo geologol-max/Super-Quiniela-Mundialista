@@ -31,7 +31,20 @@ export function Admin() {
   const fetchMatches = async () => {
     const q = query(collection(db, 'matches'), orderBy('date', 'asc'));
     const snap = await getDocs(q);
-    setMatches(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Match)));
+    setMatches(snap.docs.map(doc => {
+      const data = doc.data();
+      let dateStr = '';
+      if (data.date) {
+        if (typeof data.date === 'string') {
+          dateStr = data.date;
+        } else if (typeof data.date.toDate === 'function') {
+          dateStr = data.date.toDate().toISOString();
+        } else if (data.date.seconds !== undefined) {
+          dateStr = new Date(data.date.seconds * 1000).toISOString();
+        }
+      }
+      return { id: doc.id, ...data, date: dateStr } as Match;
+    }));
   };
 
   const fetchParley = async () => {
@@ -394,8 +407,20 @@ export function Admin() {
                 
                 <div className="flex items-center gap-6 w-full lg:w-auto">
                   <div className="text-right hidden md:block">
-                    <div className="text-xs font-bold text-slate-400">{new Date(m.date).toLocaleDateString()}</div>
-                    <div className="text-xs text-slate-400">{new Date(m.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                    {(() => {
+                      const matchDate = m.date ? new Date(m.date) : null;
+                      const isValidDate = matchDate && !isNaN(matchDate.getTime());
+                      return (
+                        <>
+                          <div className="text-xs font-bold text-slate-400">
+                            {isValidDate ? matchDate.toLocaleDateString() : "Pendiente"}
+                          </div>
+                          <div className="text-xs text-slate-400">
+                            {isValidDate ? matchDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Pendiente"}
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
 
                   {m.status === 'scheduled' ? (

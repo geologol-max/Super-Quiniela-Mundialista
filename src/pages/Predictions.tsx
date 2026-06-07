@@ -414,8 +414,21 @@ export function Predictions() {
   useEffect(() => {
     // Load matches with real-time listener (no orderBy to avoid needing composite index)
     const unsubMatches = onSnapshot(collection(db, 'matches'), (snapshot) => {
-      const dbMatches = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Match));
-      // Sort client-side to avoid requiring a Firestore composite index
+      const dbMatches = snapshot.docs.map(doc => {
+        const data = doc.data();
+        let dateStr = '';
+        if (data.date) {
+          if (typeof data.date === 'string') {
+            dateStr = data.date;
+          } else if (typeof data.date.toDate === 'function') {
+            dateStr = data.date.toDate().toISOString();
+          } else if (data.date.seconds !== undefined) {
+            dateStr = new Date(data.date.seconds * 1000).toISOString();
+          }
+        }
+        return { id: doc.id, ...data, date: dateStr } as Match;
+      });
+      // Sort client-side safely
       dbMatches.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
       setMatches(dbMatches);
       setMatchesLoading(false);
@@ -756,14 +769,14 @@ export function Predictions() {
       }
     });
 
-    // Convert to sorted array
+    // Convert to sorted array with safe fallback comparison
     return Object.values(standings).sort((a, b) => {
       if (b.pts !== a.pts) return b.pts - a.pts;
       const difB = b.gf - b.gc;
       const difA = a.gf - a.gc;
       if (difB !== difA) return difB - difA;
       if (b.gf !== a.gf) return b.gf - a.gf;
-      return a.name.localeCompare(b.name);
+      return (a.name || '').localeCompare(b.name || '');
     });
   };
 
@@ -860,7 +873,7 @@ export function Predictions() {
         const difA = a.gf - a.gc;
         if (difB !== difA) return difB - difA;
         if (b.gf !== a.gf) return b.gf - a.gf;
-        return a.name.localeCompare(b.name);
+        return (a.name || '').localeCompare(b.name || '');
       });
     });
 
@@ -897,7 +910,7 @@ export function Predictions() {
       const difA = a.gf - a.gc;
       if (difB !== difA) return difB - difA;
       if (b.gf !== a.gf) return b.gf - a.gf;
-      return a.group.localeCompare(b.group);
+      return (a.group || '').localeCompare(b.group || '');
     });
   };
 
@@ -1266,7 +1279,11 @@ export function Predictions() {
                       const scoreA = pred?.scoreA !== undefined ? pred.scoreA : '';
                       const scoreB = pred?.scoreB !== undefined ? pred.scoreB : '';
                       const isFinished = match.status === 'finished';
-                      const formattedTime = new Date(match.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + " hs";
+                      const matchDate = match.date ? new Date(match.date) : null;
+                      const isValidDate = matchDate && !isNaN(matchDate.getTime());
+                      const formattedTime = isValidDate
+                        ? matchDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + " hs"
+                        : "Pendiente";
 
                       return (
                         <div 
@@ -1277,7 +1294,7 @@ export function Predictions() {
                           <div className="flex items-center justify-between border-b border-dashed border-slate-100 pb-2 mb-4">
                             <div className="font-mono text-sm font-black text-indigo-600 flex items-center gap-1.5">
                               <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse" />
-                              {formattedTime} - {new Date(match.date).toLocaleDateString([], { day: '2-digit', month: 'short' })}
+                              {formattedTime} - {isValidDate ? matchDate.toLocaleDateString([], { day: '2-digit', month: 'short' }) : "Pendiente"}
                             </div>
                             <div className="text-2xs font-black text-slate-400 uppercase bg-slate-50 px-2 py-0.5 rounded border border-slate-200">
                               {match.group}
