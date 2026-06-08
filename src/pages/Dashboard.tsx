@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, getDocs, getDocsFromServer } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { UserProfile } from '../types';
@@ -50,17 +50,14 @@ export function Dashboard() {
   }, [profile]);
 
   useEffect(() => {
-    console.log(`[Dashboard] Subscribing to users collection (refresh #${refreshKey})...`);
-    setIsConnected(true);
-    
-    const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
-      const source = snapshot.metadata.fromCache ? 'CACHE' : 'SERVER';
-      console.log(`[Dashboard] Received ${snapshot.docs.length} users from ${source}`);
-      
-      const usersData = snapshot.docs.map(doc => {
-        const data = doc.data();
+    let unsubscribe: (() => void) | null = null;
+    let isMounted = true;
+
+    const parseUsersSnapshot = (docs: any[]): UserProfile[] => {
+      return docs.map((d: any) => {
+        const data = d.data();
         return {
-          uid: doc.id,
+          uid: d.id,
           name: String(data.name || 'Participante'),
           email: String(data.email || 'Sin correo'),
           avatarUrl: String(data.avatarUrl || ''),
@@ -72,34 +69,110 @@ export function Dashboard() {
           completed: !!data.completed
         };
       }) as UserProfile[];
+    };
 
-      // Sort users by totalPoints descending, then by name alphabetically
-      usersData.sort((a, b) => {
+    const sortUsers = (arr: UserProfile[]) => {
+      arr.sort((a, b) => {
         const pointsA = a.totalPoints || 0;
         const pointsB = b.totalPoints || 0;
-        if (pointsB !== pointsA) {
-          return pointsB - pointsA;
-        }
+        if (pointsB !== pointsA) return pointsB - pointsA;
         return a.name.localeCompare(b.name);
       });
+      return arr;
+    };
 
-      setUsers(usersData);
-      setLoadError(null);
-      setIsConnected(!snapshot.metadata.fromCache);
-      setLastRefresh(new Date());
-      setLoading(false);
-    }, (error) => {
-      console.error("Error loading leaderboard:", error);
-      setIsConnected(false);
-      if (error.code === 'permission-denied') {
-        setLoadError("Error de permisos (permission-denied) en Firestore. Asegúrate de haber publicado las reglas de seguridad para tu base de datos en la consola web de Firebase.");
-      } else {
-        setLoadError("Error al cargar participantes: " + error.message);
+    async function loadUsers() {
+      console.log(`[Dashboard] Loading users (refresh #${refreshKey})...`);
+
+      // STEP 1: Try to read ALL users directly from server first
+      // This bypasses cache and gives us a clear success/failure signal
+      try {
+        const serverSnap = await getDocsFromServer(collection(db, 'users'));
+        if (!isMounted) return;
+        
+        const serverUsers = sortUsers(parseUsersSnapshot(serverSnap.docs));
+        console.log(`[Dashboard] ✅ Server read SUCCESS: ${serverUsers.length} users`);
+        
+        setUsers(serverUsers);
+        setIsConnected(true);
+        setLoadError(null);
+        setLastRefresh(new Date());
+        setLoading(false);
+      } catch (serverError: any) {
+        console.error(`[Dashboard] ❌ Server read FAILED:`, serverError);
+        if (!isMounted) return;
+        
+        setIsConnected(false);
+        
+        // Try fallback with getDocs (which uses cache)
+        try {
+          const fallbackSnap = await getDocs(collection(db, 'users'));
+          if (!isMounted) return;
+          
+          const fallbackUsers = sortUsers(parseUsersSnapshot(fallbackSnap.docs));
+          console.log(`[Dashboard] ⚠️ Fallback (cache): ${fallbackUsers.length} users`);
+          setUsers(fallbackUsers);
+        } catch (e2) {
+          console.error(`[Dashboard] ❌ Fallback also failed:`, e2);
+        }
+        
+        // Set a detailed error message
+        const errCode = serverError?.code || '';
+        const errMsg = serverError?.message || String(serverError);
+        
+        if (errCode === 'permission-denied' || errMsg.includes('permission')) {
+          setLoadError(
+            `⛔ PERMISOS DENEGADOS: Firestore rechazó la lectura de la colección "users". ` +
+            `Esto significa que las Reglas de Seguridad de Firestore NO están publicadas correctamente. ` +
+            `Ve a la consola de Firebase → Firestore → Reglas, y verifica que las reglas permitan lectura para usuarios autenticados. ` +
+            `Base de datos: "${db.toJSON ? JSON.stringify((db as any)._databaseId) : 'default'}". ` +
+            `Error original: ${errMsg}`
+          );
+        } else {
+          setLoadError(`Error al leer participantes del servidor: ${errMsg}. Se muestran datos locales si disponibles.`);
+        }
+        setLoading(false);
       }
-      setLoading(false);
-    });
 
-    return () => unsubscribe();
+      // STEP 2: Set up real-time listener for ongoing updates
+      unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
+        if (!isMounted) return;
+        const source = snapshot.metadata.fromCache ? 'CACHE' : 'SERVER';
+        const hasPendingWrites = snapshot.metadata.hasPendingWrites;
+        console.log(`[Dashboard] onSnapshot: ${snapshot.docs.length} users (source: ${source}, pendingWrites: ${hasPendingWrites})`);
+        
+        const usersData = sortUsers(parseUsersSnapshot(snapshot.docs));
+        setUsers(usersData);
+        setLastRefresh(new Date());
+        
+        if (!snapshot.metadata.fromCache) {
+          // We got a server response — data is fresh
+          setIsConnected(true);
+          setLoadError(null);
+        }
+      }, (error) => {
+        console.error("[Dashboard] onSnapshot error:", error);
+        // Don't overwrite users data — keep whatever we loaded initially
+        setIsConnected(false);
+        if (!loadError) {
+          // Only set error if we don't already have one from the initial load
+          if (error.code === 'permission-denied') {
+            setLoadError(
+              `⛔ Error de permisos en tiempo real: Firestore rechazó la suscripción a "users". ` +
+              `Las reglas de seguridad necesitan permitir lectura a usuarios autenticados. ` +
+              `Código: ${error.code}`
+            );
+          }
+        }
+      });
+    }
+
+    loadUsers();
+
+    return () => {
+      isMounted = false;
+      if (unsubscribe) unsubscribe();
+    };
   }, [refreshKey]);
 
   // Memoize current user stats

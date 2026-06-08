@@ -3,7 +3,7 @@ import { collection, addDoc, getDocs, getDocsFromServer, doc, setDoc, query, ord
 import { db } from '../lib/firebase';
 import { Match, UserProfile, Prediction, calculateMatchPoints, ParleyQuestion } from '../types';
 import { WORLD_CUP_TEAMS, OFFICIAL_2026_MATCHES_SEED } from '../lib/constants';
-import { Plus, Trash2, RefreshCw, Trophy, Users, CheckCircle, Check, Clock, Mail, BarChart2 } from 'lucide-react';
+import { Plus, Trash2, RefreshCw, Trophy, Users, CheckCircle, Check, Clock, Mail, BarChart2, AlertTriangle, Search, Database } from 'lucide-react';
 
 export function Admin() {
   const [matches, setMatches] = useState<Match[]>([]);
@@ -11,48 +11,129 @@ export function Admin() {
   const [isSeeding, setIsSeeding] = useState(false);
   const [parleyQuestions, setParleyQuestions] = useState<ParleyQuestion[]>([]);
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
+  const [usersError, setUsersError] = useState<string | null>(null);
+  const [diagnosticResults, setDiagnosticResults] = useState<any>(null);
+  const [runningDiagnostic, setRunningDiagnostic] = useState(false);
+
+  // Parse Firestore user docs into UserProfile objects
+  const parseUserDocs = (docs: any[]): UserProfile[] => {
+    return docs.map((d: any) => {
+      const data = d.data();
+      return {
+        uid: d.id,
+        name: String(data.name || 'Participante'),
+        email: String(data.email || 'Sin correo'),
+        avatarUrl: String(data.avatarUrl || ''),
+        avatarEmoji: String(data.avatarEmoji || '⚽'),
+        role: String(data.role || 'participant'),
+        totalPoints: typeof data.totalPoints === 'number' ? data.totalPoints : 0,
+        predictionsCount: typeof data.predictionsCount === 'number' ? data.predictionsCount : 0,
+        parleyCount: typeof data.parleyCount === 'number' ? data.parleyCount : 0,
+        completed: !!data.completed
+      } as UserProfile;
+    }).sort((a, b) => {
+      if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
+      return a.name.localeCompare(b.name);
+    });
+  };
 
   useEffect(() => {
     fetchMatches();
     fetchParley();
-    
-    // Real-time listener for ALL users — the critical fix so admin always sees everyone
-    const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
-      const source = snapshot.metadata.fromCache ? 'CACHE' : 'SERVER';
-      console.log(`[Admin] Received ${snapshot.docs.length} users from ${source}`);
-      
-      const usersData = snapshot.docs.map(d => {
-        const data = d.data();
-        return {
-          uid: d.id,
-          name: String(data.name || 'Participante'),
-          email: String(data.email || 'Sin correo'),
-          avatarUrl: String(data.avatarUrl || ''),
-          avatarEmoji: String(data.avatarEmoji || '⚽'),
-          role: String(data.role || 'participant'),
-          totalPoints: typeof data.totalPoints === 'number' ? data.totalPoints : 0,
-          predictionsCount: typeof data.predictionsCount === 'number' ? data.predictionsCount : 0,
-          parleyCount: typeof data.parleyCount === 'number' ? data.parleyCount : 0,
-          completed: !!data.completed
-        } as UserProfile;
+
+    // Load users with server-first strategy
+    let unsubUsers: (() => void) | null = null;
+    let isMounted = true;
+
+    async function loadUsers() {
+      // STEP 1: Try server read first
+      try {
+        const serverSnap = await getDocsFromServer(collection(db, 'users'));
+        if (!isMounted) return;
+        console.log(`[Admin] ✅ Server read: ${serverSnap.docs.length} users`);
+        setAllUsers(parseUserDocs(serverSnap.docs));
+        setUsersError(null);
+      } catch (err: any) {
+        console.error('[Admin] ❌ Server read failed:', err);
+        if (!isMounted) return;
+        setUsersError(`Error leyendo usuarios del servidor: ${err?.code || ''} ${err?.message || err}`);
+        // Fallback to cache
+        try {
+          const cacheSnap = await getDocs(collection(db, 'users'));
+          if (!isMounted) return;
+          setAllUsers(parseUserDocs(cacheSnap.docs));
+        } catch (e2) { /* ignore fallback errors */ }
+      }
+
+      // STEP 2: Set up real-time listener
+      unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+        if (!isMounted) return;
+        const source = snapshot.metadata.fromCache ? 'CACHE' : 'SERVER';
+        console.log(`[Admin] onSnapshot: ${snapshot.docs.length} users (${source})`);
+        setAllUsers(parseUserDocs(snapshot.docs));
+        if (!snapshot.metadata.fromCache) {
+          setUsersError(null);
+        }
+      }, (error) => {
+        console.error('[Admin] onSnapshot error:', error);
+        if (!usersError) {
+          setUsersError(`Error en listener de usuarios: ${error.code} ${error.message}`);
+        }
       });
-      
-      // Sort by totalPoints desc, then name
-      usersData.sort((a, b) => {
-        if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
-        return a.name.localeCompare(b.name);
-      });
-      
-      setAllUsers(usersData);
-    }, (error) => {
-      console.error('[Admin] Error in users snapshot:', error);
-    });
-    
-    return () => unsubUsers();
+    }
+
+    loadUsers();
+    return () => { isMounted = false; if (unsubUsers) unsubUsers(); };
   }, []);
 
-  // usersCount is now derived from the real-time allUsers array
   const usersCount = allUsers.length;
+
+  // ========== DIAGNOSTIC TOOL ==========
+  const runDiagnostic = async () => {
+    setRunningDiagnostic(true);
+    const results: any = { timestamp: new Date().toISOString(), collections: {} };
+
+    const testCollection = async (name: string) => {
+      const entry: any = { serverCount: null, cacheCount: null, error: null, uniqueUserIds: null };
+      try {
+        const snap = await getDocsFromServer(collection(db, name));
+        entry.serverCount = snap.docs.length;
+        // For predictions/parleyAnswers, extract unique userIds
+        if (name === 'predictions' || name === 'parleyAnswers') {
+          const uids = new Set(snap.docs.map(d => d.data().userId).filter(Boolean));
+          entry.uniqueUserIds = Array.from(uids);
+        }
+        if (name === 'users') {
+          entry.details = snap.docs.map(d => ({ uid: d.id, name: d.data().name, email: d.data().email }));
+        }
+      } catch (err: any) {
+        entry.error = `${err?.code || 'unknown'}: ${err?.message || String(err)}`;
+        // Try cache fallback
+        try {
+          const cacheSnap = await getDocs(collection(db, name));
+          entry.cacheCount = cacheSnap.docs.length;
+        } catch (e2: any) {
+          entry.cacheError = `${e2?.code || 'unknown'}: ${e2?.message || String(e2)}`;
+        }
+      }
+      return entry;
+    };
+
+    for (const col of ['users', 'predictions', 'parleyAnswers', 'matches', 'parleyQuestions', 'podiums']) {
+      results.collections[col] = await testCollection(col);
+    }
+
+    // Find orphaned users (have predictions but no user doc)
+    const predUserIds = results.collections.predictions?.uniqueUserIds || [];
+    const parleyUserIds = results.collections.parleyAnswers?.uniqueUserIds || [];
+    const allDataUserIds = [...new Set([...predUserIds, ...parleyUserIds])];
+    const existingUserIds = (results.collections.users?.details || []).map((u: any) => u.uid);
+    results.orphanedUserIds = allDataUserIds.filter((uid: string) => !existingUserIds.includes(uid));
+    results.totalUniqueUsers = allDataUserIds.length;
+
+    setDiagnosticResults(results);
+    setRunningDiagnostic(false);
+  };
 
   const fetchMatches = async () => {
     const q = query(collection(db, 'matches'), orderBy('date', 'asc'));
@@ -317,15 +398,123 @@ export function Admin() {
           <h1 className="text-3xl font-bold text-slate-900 font-sans tracking-tight">Admin Dashboard</h1>
           <p className="text-slate-500">Super Quiniela Mundialista - Centro de Control</p>
         </div>
-        <button 
-          onClick={recalculateLeaderboard}
-          disabled={isSeeding}
-          className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 disabled:opacity-50 transition font-bold"
-        >
-          <RefreshCw className="w-4 h-4" />
-          Sincronizar y Recuperar Usuarios
-        </button>
+        <div className="flex gap-3 flex-wrap">
+          <button 
+            onClick={runDiagnostic}
+            disabled={runningDiagnostic}
+            className="flex items-center gap-2 px-5 py-3 bg-amber-500 text-white rounded-xl shadow-lg shadow-amber-200 hover:bg-amber-600 disabled:opacity-50 transition font-bold"
+          >
+            <Search className={`w-4 h-4 ${runningDiagnostic ? 'animate-spin' : ''}`} />
+            Diagnóstico
+          </button>
+          <button 
+            onClick={recalculateLeaderboard}
+            disabled={isSeeding}
+            className="flex items-center gap-2 px-5 py-3 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 disabled:opacity-50 transition font-bold"
+          >
+            <RefreshCw className={`w-4 h-4 ${isSeeding ? 'animate-spin' : ''}`} />
+            Sincronizar y Recuperar Usuarios
+          </button>
+        </div>
       </header>
+
+      {/* ERROR BANNER */}
+      {usersError && (
+        <div className="p-5 bg-red-50 border-2 border-red-300 rounded-2xl text-red-800 shadow-md">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5 animate-pulse" />
+            <div>
+              <p className="font-black text-red-900 text-base">⛔ Error Crítico de Base de Datos</p>
+              <p className="text-sm mt-1 leading-relaxed">{usersError}</p>
+              <p className="text-xs mt-3 font-bold text-red-700">→ Haz clic en "Diagnóstico" arriba para obtener un reporte detallado del estado de cada colección.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DIAGNOSTIC RESULTS PANEL */}
+      {diagnosticResults && (
+        <section className="bg-slate-900 text-white p-6 rounded-2xl shadow-xl space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Database className="w-5 h-5 text-amber-400" />
+              <h2 className="text-lg font-black">Resultado del Diagnóstico</h2>
+            </div>
+            <span className="text-xs text-slate-400 font-mono">{diagnosticResults.timestamp}</span>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            {Object.entries(diagnosticResults.collections).map(([name, data]: [string, any]) => (
+              <div key={name} className={`p-4 rounded-xl border ${
+                data.error ? 'bg-red-900/30 border-red-700' : 'bg-slate-800 border-slate-700'
+              }`}>
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">{name}</div>
+                {data.error ? (
+                  <div>
+                    <span className="text-red-400 font-bold text-lg">❌ ERROR</span>
+                    <p className="text-red-300 text-xs mt-1 break-all">{data.error}</p>
+                    {data.cacheCount !== null && (
+                      <p className="text-amber-400 text-xs mt-1">Cache local: {data.cacheCount} docs</p>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <span className="text-emerald-400 font-black text-2xl">{data.serverCount}</span>
+                    <span className="text-slate-400 text-xs ml-1">docs (servidor)</span>
+                    {data.uniqueUserIds && (
+                      <p className="text-amber-300 text-xs mt-1">{data.uniqueUserIds.length} usuarios únicos</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Users detail */}
+          {diagnosticResults.collections.users?.details && (
+            <div className="bg-slate-800 p-4 rounded-xl border border-slate-700">
+              <div className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-2">Usuarios en Firestore (directo del servidor)</div>
+              <div className="space-y-1 max-h-48 overflow-y-auto">
+                {diagnosticResults.collections.users.details.map((u: any, i: number) => (
+                  <div key={u.uid} className="text-xs font-mono flex gap-4">
+                    <span className="text-slate-500 w-6">{i+1}.</span>
+                    <span className="text-white font-bold w-32 truncate">{u.name}</span>
+                    <span className="text-slate-400 truncate">{u.email}</span>
+                    <span className="text-slate-600 text-[10px]">{u.uid.substring(0, 10)}...</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Orphaned users */}
+          {diagnosticResults.orphanedUserIds?.length > 0 && (
+            <div className="bg-amber-900/30 p-4 rounded-xl border border-amber-700">
+              <div className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-2">
+                ⚠️ {diagnosticResults.orphanedUserIds.length} Usuarios Huérfanos (tienen pronósticos pero NO tienen perfil)
+              </div>
+              <div className="text-xs font-mono text-amber-300 space-y-1">
+                {diagnosticResults.orphanedUserIds.map((uid: string) => (
+                  <div key={uid}>{uid}</div>
+                ))}
+              </div>
+              <p className="text-xs text-amber-200 mt-2 font-bold">
+                → Presiona "Sincronizar y Recuperar Usuarios" para crear sus perfiles automáticamente.
+              </p>
+            </div>
+          )}
+
+          {diagnosticResults.orphanedUserIds?.length === 0 && diagnosticResults.collections.users?.serverCount !== null && (
+            <div className="bg-emerald-900/30 p-3 rounded-xl border border-emerald-700 text-emerald-300 text-sm font-bold flex items-center gap-2">
+              <Check className="w-4 h-4" /> Todos los usuarios con pronósticos tienen perfil creado. Total usuarios con datos: {diagnosticResults.totalUniqueUsers}
+            </div>
+          )}
+
+          <button onClick={() => setDiagnosticResults(null)} className="text-xs text-slate-500 hover:text-white transition">
+            Cerrar diagnóstico
+          </button>
+        </section>
+      )}
 
       {/* Stats Summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
