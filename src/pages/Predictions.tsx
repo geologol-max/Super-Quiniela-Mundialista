@@ -657,32 +657,6 @@ export function Predictions() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-40 gap-3">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-        <p className="text-sm font-bold text-slate-500">Cargando pronósticos...</p>
-        {loadError && (
-          <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm max-w-md text-center">
-            <p className="font-bold">Error de conexión</p>
-            <p className="text-xs mt-1">{loadError}</p>
-            <button onClick={() => window.location.reload()} className="mt-3 px-4 py-2 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700">Reintentar</button>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  if (isSeeding) {
-    return (
-      <div className="flex flex-col items-center justify-center py-40 gap-4">
-        <RefreshCw className="animate-spin h-12 w-12 text-yellow-600" />
-        <p className="text-lg font-black text-slate-700">Sembrando el Calendario Oficial de 72 partidos...</p>
-        <p className="text-xs text-slate-400">Por favor, espera a que se complete para evitar cualquier parpadeo de datos.</p>
-      </div>
-    );
-  }
-
   // Filter matches for selected group
   const groupMatches = useMemo(() => matches.filter(m => m.group === selectedGroup), [matches, selectedGroup]);
 
@@ -879,6 +853,32 @@ export function Predictions() {
 
     return allStandings;
   }, [matches, predictions]);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-40 gap-3">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+        <p className="text-sm font-bold text-slate-500">Cargando pronósticos...</p>
+        {loadError && (
+          <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm max-w-md text-center">
+            <p className="font-bold">Error de conexión</p>
+            <p className="text-xs mt-1">{loadError}</p>
+            <button onClick={() => window.location.reload()} className="mt-3 px-4 py-2 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700">Reintentar</button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (isSeeding) {
+    return (
+      <div className="flex flex-col items-center justify-center py-40 gap-4">
+        <RefreshCw className="animate-spin h-12 w-12 text-yellow-600" />
+        <p className="text-lg font-black text-slate-700">Sembrando el Calendario Oficial de 72 partidos...</p>
+        <p className="text-xs text-slate-400">Por favor, espera a que se complete para evitar cualquier parpadeo de datos.</p>
+      </div>
+    );
+  }
 
   const getThirdPlacedTeamsStats = () => {
     const groupStandingsAll = calculateAllGroupStandings;
