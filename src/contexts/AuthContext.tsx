@@ -121,6 +121,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           }, (error) => {
             console.error("Error in profile snapshot listener:", error);
+            
+            // Fallback: If database permissions fail (e.g. rules not deployed),
+            // don't leave the profile null/loading. Give the admin or participant
+            // an in-memory profile so they can navigate the app and access diagnostics.
+            if (authUser.email?.toLowerCase() === 'geologol@gmail.com') {
+              console.log("[AuthContext] Setting fallback ADMIN profile due to Firestore read failure.");
+              setProfile({
+                uid: authUser.uid,
+                name: authUser.displayName || 'Administrador (Fallback)',
+                email: authUser.email || 'geologol@gmail.com',
+                role: 'admin',
+                totalPoints: 0,
+                avatarEmoji: '👑',
+                predictionsCount: 0,
+                parleyCount: 0,
+                completed: false
+              });
+            } else {
+              console.log("[AuthContext] Setting fallback PARTICIPANT profile due to Firestore read failure.");
+              setProfile({
+                uid: authUser.uid,
+                name: authUser.displayName || 'Participante (Fallback)',
+                email: authUser.email || '',
+                role: 'participant',
+                totalPoints: 0,
+                avatarEmoji: '⚽',
+                predictionsCount: 0,
+                parleyCount: 0,
+                completed: false
+              });
+            }
             setLoading(false);
           });
         } else {
