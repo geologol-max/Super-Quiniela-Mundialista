@@ -101,10 +101,25 @@ export function Audit() {
     fetchUserData();
   }, [selectedUserId, users]);
 
-  const filteredUsers = users.filter(u => 
-    u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (u.email || '').toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const normalizeStr = (str: string) => 
+    str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+  const filteredUsers = users.filter(u => {
+    const normSearch = normalizeStr(searchTerm);
+    const normName = normalizeStr(u.name || '');
+    const normEmail = normalizeStr(u.email || '');
+    return normName.includes(normSearch) || normEmail.includes(normSearch);
+  });
+
+  // Auto-select the first user in the filtered list if the current selected user is not in it
+  useEffect(() => {
+    if (searchTerm.trim() !== '' && filteredUsers.length > 0) {
+      const isStillInFiltered = filteredUsers.some(u => u.uid === selectedUserId);
+      if (!isStillInFiltered) {
+        setSelectedUserId(filteredUsers[0].uid);
+      }
+    }
+  }, [searchTerm, filteredUsers, selectedUserId]);
 
   const handlePrint = () => {
     window.print();
@@ -144,78 +159,124 @@ export function Audit() {
     <div className="space-y-6">
       
       {/* SCREEN-ONLY CONTROLS PANEL */}
-      <div className="no-print bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <h2 className="text-2xl font-black text-slate-800 font-display flex items-center gap-2">
-              <Search className="w-6 h-6 text-indigo-600" />
-              Auditoría de Pronósticos
-            </h2>
-            <p className="text-xs text-slate-400">Revisa con total transparencia y descarga en PDF los pronósticos cargados por cualquier participante.</p>
-          </div>
-          
-          <button 
-            onClick={handlePrint}
-            disabled={!selectedUser || loadingData}
-            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-slate-900 text-white rounded-xl shadow-lg hover:bg-slate-800 disabled:opacity-50 transition-all font-bold text-xs self-start md:self-auto"
-          >
-            <Printer className="w-4 h-4" />
-            Descargar PDF / Imprimir
-          </button>
+      <div className="no-print bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <h2 className="text-2xl font-black text-slate-800 font-display flex items-center gap-2">
+            <Search className="w-6 h-6 text-indigo-600" />
+            Auditoría de Pronósticos
+          </h2>
+          <p className="text-xs text-slate-400">Revisa con total transparencia y descarga en PDF los pronósticos cargados por cualquier participante.</p>
         </div>
-
-        {/* SEARCH AND SELECT PARTICIPANT */}
-        <div className="grid md:grid-cols-3 gap-4 pt-2">
-          <div className="relative">
-            <input 
-              type="text" 
-              placeholder="Buscar participante..."
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 border border-slate-250 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-            />
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-          </div>
-
-          <div className="md:col-span-2">
-            <select
-              value={selectedUserId}
-              onChange={e => setSelectedUserId(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-250 rounded-xl text-xs bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none font-bold"
-            >
-              {filteredUsers.map(u => (
-                <option key={u.uid} value={u.uid}>
-                  {u.avatarEmoji || '⚽'} {u.name} (Puntos: {u.totalPoints || 0} - {u.email || 'Invitado'})
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+        
+        <button 
+          onClick={handlePrint}
+          disabled={!selectedUser || loadingData}
+          className="flex items-center justify-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl shadow-lg hover:bg-indigo-750 disabled:opacity-50 transition-all font-bold text-xs self-start md:self-auto"
+        >
+          <Printer className="w-4 h-4" />
+          Descargar PDF / Imprimir
+        </button>
       </div>
 
-      {loadingData ? (
-        <div className="flex flex-col items-center justify-center py-20 gap-3">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-          <p className="text-xs font-bold text-slate-400">Cargando pronósticos del participante...</p>
-        </div>
-      ) : selectedUser ? (
-        <>
-          {/* SCREEN-ONLY USER HEADER & TABS */}
-          <div className="no-print space-y-6">
-            {/* Participant Profile Banner */}
-            <div className="bg-gradient-to-r from-indigo-950 to-slate-900 text-white p-6 rounded-3xl shadow-xl flex items-center justify-between border border-slate-850">
-              <div className="flex items-center gap-4">
-                <span className="text-4xl filter drop-shadow-md select-none">{selectedUser.avatarEmoji || '⚽'}</span>
-                <div>
-                  <h3 className="text-lg font-black">{selectedUser.name}</h3>
-                  <p className="text-xs text-slate-400">{selectedUser.email || 'Invitado'}</p>
-                </div>
-              </div>
-              <div className="text-right">
-                <span className="block text-[10px] text-slate-400 uppercase tracking-widest font-black">Puntaje Total</span>
-                <span className="text-3xl font-extrabold text-indigo-400">{selectedUser.totalPoints || 0} Ptos</span>
-              </div>
+      {/* GRID LAYOUT */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        
+        {/* SIDEBAR: PARTICIPANT SEARCH & LIST */}
+        <div className="no-print lg:col-span-1 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex flex-col gap-4 self-start">
+          <div className="space-y-2">
+            <label className="text-xs font-black text-slate-500 uppercase tracking-wider block">Buscar Participante</label>
+            <div className="relative">
+              <input 
+                type="text" 
+                placeholder="Nombre, apellido o correo..."
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-slate-50/50 font-medium"
+              />
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3 font-bold" />
             </div>
+          </div>
+
+          <div className="flex flex-col gap-2 max-h-[300px] lg:max-h-[600px] overflow-y-auto pr-1">
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Participantes ({filteredUsers.length})</span>
+            {filteredUsers.length > 0 ? (
+              filteredUsers.map((u) => {
+                const rank = users.findIndex(user => user.uid === u.uid) + 1;
+                const isSelected = u.uid === selectedUserId;
+                
+                return (
+                  <button
+                    key={u.uid}
+                    onClick={() => setSelectedUserId(u.uid)}
+                    className={`flex items-center justify-between p-3 rounded-2xl text-left transition-all duration-200 border cursor-pointer ${
+                      isSelected
+                        ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white border-transparent shadow-md shadow-indigo-150'
+                        : 'bg-white text-slate-800 border-slate-100 hover:border-slate-200 hover:bg-slate-50/80'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="text-xl filter drop-shadow-sm shrink-0 select-none">
+                        {u.avatarEmoji || '⚽'}
+                      </span>
+                      <div className="min-w-0 leading-tight">
+                        <span className="block font-bold text-xs truncate">
+                          {u.name}
+                        </span>
+                        <span className={`block text-[10px] truncate ${
+                          isSelected ? 'text-indigo-200' : 'text-slate-400'
+                        }`}>
+                          {u.email || 'Invitado'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                      <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${
+                        isSelected ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-550'
+                      }`}>
+                        #{rank}
+                      </span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg ${
+                        isSelected ? 'bg-white/20 text-white' : 'bg-indigo-50 text-indigo-700'
+                      }`}>
+                        {u.totalPoints || 0}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })
+            ) : (
+              <div className="text-center py-8 text-xs text-slate-400">
+                No hay coincidencias
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* MAIN AUDIT AREA */}
+        <div className="lg:col-span-3">
+          {loadingData ? (
+            <div className="no-print bg-white p-20 rounded-3xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-3">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+              <p className="text-xs font-bold text-slate-400">Cargando pronósticos del participante...</p>
+            </div>
+          ) : selectedUser ? (
+            <div className="space-y-6">
+              {/* SCREEN-ONLY USER HEADER & TABS */}
+              <div className="no-print space-y-6">
+                {/* Participant Profile Banner */}
+                <div className="bg-gradient-to-r from-indigo-950 to-slate-900 text-white p-6 rounded-3xl shadow-xl flex items-center justify-between border border-slate-850">
+                  <div className="flex items-center gap-4">
+                    <span className="text-4xl filter drop-shadow-md select-none">{selectedUser.avatarEmoji || '⚽'}</span>
+                    <div>
+                      <h3 className="text-lg font-black">{selectedUser.name}</h3>
+                      <p className="text-xs text-slate-400">{selectedUser.email || 'Invitado'}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="block text-[10px] text-slate-400 uppercase tracking-widest font-black">Puntaje Total</span>
+                    <span className="text-3xl font-extrabold text-indigo-400">{selectedUser.totalPoints || 0} Ptos</span>
+                  </div>
+                </div>
 
             {/* View Tabs */}
             <div className="flex border-b border-slate-200 gap-6 text-sm font-semibold">
@@ -585,14 +646,15 @@ export function Audit() {
             </div>
 
           </div>
-        </>
-      ) : (
-        <div className="bg-amber-50 border border-amber-250 p-4 rounded-xl text-xs text-amber-800 flex items-center gap-2">
-          <AlertCircle className="w-5 h-5" />
-          <span>No se ha seleccionado ningún participante o el usuario no existe.</span>
+            </div>
+          ) : (
+            <div className="no-print bg-amber-50 border border-amber-250 p-4 rounded-xl text-xs text-amber-800 flex items-center gap-2">
+              <AlertCircle className="w-5 h-5" />
+              <span>No se ha seleccionado ningún participante o el usuario no existe.</span>
+            </div>
+          )}
         </div>
-      )}
-
+      </div>
     </div>
   );
 }
