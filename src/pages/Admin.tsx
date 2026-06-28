@@ -476,13 +476,26 @@ export function Admin() {
       const groupStandingsAll = calculateAllGroupStandingsData(dbMatches, {});
       const top8Thirds = getThirdPlacedTeamsStatsData(dbMatches, {}).slice(0, 8);
 
+      const realMatchesAsPredictions: Record<string, Prediction> = {};
+      dbMatches.forEach(m => {
+        if (m.status === 'finished' && m.scoreA !== undefined && m.scoreB !== undefined) {
+          realMatchesAsPredictions[m.id] = {
+            userId: 'real',
+            matchId: m.id,
+            scoreA: m.scoreA,
+            scoreB: m.scoreB,
+            winnerId: m.scoreA > m.scoreB ? 'A' : (m.scoreA < m.scoreB ? 'B' : null)
+          };
+        }
+      });
+
       const batch = writeBatch(db);
       let count = 0;
 
       // Seed all 32 knockout matches (ko_73 to ko_104) dynamically
       KNOCKOUT_MATCHES_CONFIG.forEach(cfg => {
-        const teamAObj = resolveTeamNameData(cfg.teamASource, groupStandingsAll, top8Thirds, {});
-        const teamBObj = resolveTeamNameData(cfg.teamBSource, groupStandingsAll, top8Thirds, {});
+        const teamAObj = resolveTeamNameData(cfg.teamASource, groupStandingsAll, top8Thirds, realMatchesAsPredictions);
+        const teamBObj = resolveTeamNameData(cfg.teamBSource, groupStandingsAll, top8Thirds, realMatchesAsPredictions);
 
         const matchDocRef = doc(db, 'matches', cfg.id);
 
