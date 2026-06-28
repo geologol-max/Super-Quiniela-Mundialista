@@ -4,6 +4,14 @@ import { db } from '../lib/firebase';
 import { Match, UserProfile, Prediction, calculateMatchPoints, ParleyQuestion } from '../types';
 import { WORLD_CUP_TEAMS, OFFICIAL_2026_MATCHES_SEED } from '../lib/constants';
 import { Plus, Trash2, RefreshCw, Trophy, Users, CheckCircle, Check, Clock, Mail, BarChart2, AlertTriangle, Search, Database } from 'lucide-react';
+import { 
+  KNOCKOUT_MATCHES_CONFIG, 
+  calculateAllGroupStandingsData, 
+  getThirdPlacedTeamsStatsData, 
+  resolveTeamNameData, 
+  calculateKnockoutPoints, 
+  resolveUserPredictionsBracket 
+} from '../lib/tournament';
 
 export function Admin() {
   const [matches, setMatches] = useState<Match[]>([]);
@@ -189,12 +197,65 @@ export function Admin() {
     const matchRef = doc(db, 'matches', matchId);
     await updateDoc(matchRef, { scoreA, scoreB, status: 'finished' });
 
-    const predsSnap = await getDocs(query(collection(db, 'predictions'), where('matchId', '==', matchId)));
+    // 1. Fetch matches from server to compute resolved user brackets
+    const matchesSnap = await getDocsFromServer(collection(db, 'matches'));
+    const dbMatches = matchesSnap.docs.map(doc => {
+      const data = doc.data();
+      if (doc.id === matchId) {
+        return { id: doc.id, ...data, scoreA, scoreB, status: 'finished' } as Match;
+      }
+      return { id: doc.id, ...data } as Match;
+    });
+
+    const isKnockout = matchId.startsWith('ko_');
+
+    // 2. Fetch all predictions in one go to construct in-memory user maps (massive query optimization)
+    const allPredsSnap = await getDocsFromServer(collection(db, 'predictions'));
+    const predsByUser: Record<string, Record<string, Prediction>> = {};
+    allPredsSnap.docs.forEach(d => {
+      const data = d.data() as Prediction;
+      if (!predsByUser[data.userId]) {
+        predsByUser[data.userId] = {};
+      }
+      predsByUser[data.userId][data.matchId] = data;
+    });
+
+    // 3. Get all user predictions for this match to update
+    const predsSnap = await getDocsFromServer(query(collection(db, 'predictions'), where('matchId', '==', matchId)));
+    const batch = writeBatch(db);
+
     for (const pDoc of predsSnap.docs) {
       const pred = pDoc.data() as Prediction;
-      const points = calculateMatchPoints(pred.scoreA, pred.scoreB, scoreA, scoreB);
-      await updateDoc(pDoc.ref, { points });
+      let points = 0;
+
+      if (isKnockout) {
+        // Resolve user's theoretical matchup for this knockout match in-memory
+        const userPredsMap = predsByUser[pred.userId] || {};
+        const resolvedBracket = resolveUserPredictionsBracket(userPredsMap, dbMatches);
+        const resolvedMatchup = resolvedBracket[matchId] || { teamA: 'Pendiente', teamB: 'Pendiente' };
+
+        // Fetch real teams of this match
+        const realMatch = dbMatches.find(m => m.id === matchId)!;
+
+        points = calculateKnockoutPoints(
+          resolvedMatchup.teamA,
+          resolvedMatchup.teamB,
+          pred.scoreA,
+          pred.scoreB,
+          realMatch.teamA,
+          realMatch.teamB,
+          scoreA,
+          scoreB
+        );
+      } else {
+        // Group stage match
+        points = calculateMatchPoints(pred.scoreA, pred.scoreB, scoreA, scoreB);
+      }
+
+      batch.update(pDoc.ref, { points });
     }
+
+    await batch.commit();
     await recalculateLeaderboard();
     fetchMatches();
   };
@@ -278,7 +339,8 @@ export function Admin() {
         userStats[userId].points += (data.points || 0);
       });
       
-      // 5. Update or create profiles
+      // 5. Update or create profiles using writeBatch for transaction safety and high performance
+      const userUpdateBatch = writeBatch(db);
       let updatedCount = 0;
       let restoredCount = 0;
       const targetMatches = activeMatchIds.size || 72;
@@ -291,7 +353,7 @@ export function Admin() {
         
         if (existingUserIds.has(userId)) {
           // Update existing
-          await updateDoc(userRef, {
+          userUpdateBatch.update(userRef, {
             totalPoints: stats.points,
             predictionsCount: stats.predsCount,
             parleyCount: stats.parleysCount,
@@ -311,7 +373,7 @@ export function Admin() {
             parleyCount: stats.parleysCount,
             completed: completed
           };
-          await setDoc(userRef, newProfile);
+          userUpdateBatch.set(userRef, newProfile);
           restoredCount++;
         }
       }
@@ -320,7 +382,7 @@ export function Admin() {
       for (const uDoc of usersSnap.docs) {
         const userId = uDoc.id;
         if (!userStats[userId]) {
-          await updateDoc(uDoc.ref, {
+          userUpdateBatch.update(uDoc.ref, {
             predictionsCount: 0,
             parleyCount: 0,
             completed: false
@@ -328,6 +390,8 @@ export function Admin() {
           updatedCount++;
         }
       }
+      
+      await userUpdateBatch.commit();
       
       // allUsers will auto-update via the onSnapshot listener
       alert(`Sincronización masiva finalizada:\n- Perfiles existentes actualizados: ${updatedCount}\n- Perfiles huérfanos creados: ${restoredCount}`);
@@ -391,6 +455,72 @@ export function Admin() {
     }
   };
 
+  const parseKnockoutDate = (dateStr: string, timeStr: string): string => {
+    const monthMap: Record<string, string> = {
+      'Junio': '06',
+      'Julio': '07'
+    };
+    const parts = dateStr.split(' ');
+    const day = parts[0].padStart(2, '0');
+    const monthName = parts[2];
+    const month = monthMap[monthName] || '06';
+    return `2026-${month}-${day}T${timeStr}:00Z`;
+  };
+
+  const seedPlayoffMatches = async () => {
+    setIsSeeding(true);
+    try {
+      const matchesSnap = await getDocsFromServer(collection(db, 'matches'));
+      const dbMatches = matchesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Match));
+
+      const groupStandingsAll = calculateAllGroupStandingsData(dbMatches, {});
+      const top8Thirds = getThirdPlacedTeamsStatsData(dbMatches, {}).slice(0, 8);
+
+      const batch = writeBatch(db);
+      let count = 0;
+
+      // Seed all 32 knockout matches (ko_73 to ko_104) dynamically
+      KNOCKOUT_MATCHES_CONFIG.forEach(cfg => {
+        const teamAObj = resolveTeamNameData(cfg.teamASource, groupStandingsAll, top8Thirds, {});
+        const teamBObj = resolveTeamNameData(cfg.teamBSource, groupStandingsAll, top8Thirds, {});
+
+        const matchDocRef = doc(db, 'matches', cfg.id);
+
+        // Check if this match already exists and is finished — don't revert its status
+        const existingMatch = dbMatches.find(m => m.id === cfg.id);
+        const isAlreadyFinished = existingMatch?.status === 'finished';
+
+        const matchData: Record<string, any> = {
+          teamA: teamAObj.name,
+          teamB: teamBObj.name,
+          group: cfg.phase === 'dieciseisavos' ? 'Dieciseisavos' : 
+                 cfg.phase === 'octavos' ? 'Octavos' :
+                 cfg.phase === 'cuartos' ? 'Cuartos' :
+                 cfg.phase === 'semifinales' ? 'Semifinales' :
+                 cfg.phase === 'tercer_lugar' ? 'Tercer Lugar' : 'Final',
+          date: parseKnockoutDate(cfg.dateStr, cfg.timeStr),
+        };
+
+        // Only set status to 'scheduled' for new or non-finalized matches
+        if (!isAlreadyFinished) {
+          matchData.status = 'scheduled';
+        }
+
+        batch.set(matchDocRef, matchData, { merge: true });
+        count++;
+      });
+
+      await batch.commit();
+      fetchMatches();
+      alert(`¡Se han sembrado/actualizado los ${count} partidos de la Fase Eliminatoria reales basados en el estado actual del mundial!`);
+    } catch (e) {
+      console.error(e);
+      alert('Error al sembrar playoffs: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setIsSeeding(false);
+    }
+  };
+
   return (
     <div className="space-y-10 pb-20">
       <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -414,6 +544,14 @@ export function Admin() {
           >
             <RefreshCw className={`w-4 h-4 ${isSeeding ? 'animate-spin' : ''}`} />
             Sincronizar y Recuperar Usuarios
+          </button>
+          <button 
+            onClick={seedPlayoffMatches}
+            disabled={isSeeding}
+            className="flex items-center gap-2 px-5 py-3 bg-emerald-600 text-white rounded-xl shadow-lg shadow-emerald-200 hover:bg-emerald-700 disabled:opacity-50 transition font-bold"
+          >
+            <Trophy className="w-4 h-4" />
+            Sembrar Playoffs Reales
           </button>
         </div>
       </header>

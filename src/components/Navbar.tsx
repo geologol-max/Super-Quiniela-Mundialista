@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Trophy, LayoutDashboard, ClipboardList, ShieldCheck, LogOut, LogIn, BookOpen } from 'lucide-react';
+import { Trophy, LayoutDashboard, ClipboardList, ShieldCheck, LogOut, LogIn, BookOpen, Search } from 'lucide-react';
 
 export function Navbar() {
   const { user, profile, logout } = useAuth();
@@ -26,6 +26,10 @@ export function Navbar() {
             <Link to="/parley" className="flex items-center gap-1 text-sm font-medium hover:text-indigo-600">
               <Trophy className="w-4 h-4 text-yellow-500" />
               <span className="hidden md:inline">Parley</span>
+            </Link>
+            <Link to="/audit" className="flex items-center gap-1 text-sm font-medium hover:text-indigo-600">
+              <Search className="w-4 h-4 text-cyan-600" />
+              <span className="hidden md:inline">Auditoría</span>
             </Link>
             <Link to="/rules" className="flex items-center gap-1 text-sm font-medium hover:text-indigo-600">
               <BookOpen className="w-4 h-4 text-emerald-600" />

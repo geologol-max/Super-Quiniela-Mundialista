@@ -40,22 +40,27 @@ export async function autoSeedCollections(db: any) {
 
     // Seed matches if needed
     if (needsMatchSeed) {
-      console.log(`[AutoSeed] Matches collection has ${matchesSnap.size}/72 docs. Re-seeding official calendar...`);
+      console.log(`[AutoSeed] Matches collection has ${matchesSnap.size}/72 docs. Seeding missing official calendar...`);
       const batch = writeBatch(db);
 
-      // Delete existing matches to prevent duplicates
-      matchesSnap.docs.forEach(d => {
-        batch.delete(doc(db, 'matches', d.id));
-      });
+      const existingIds = new Set(matchesSnap.docs.map(d => d.id));
+      let addedCount = 0;
 
-      // Add all official World Cup 2026 matches
+      // Add only official World Cup 2026 matches that don't already exist
       OFFICIAL_2026_MATCHES_SEED.forEach((match, idx) => {
         const matchId = `match_2026_${idx + 1}`;
-        batch.set(doc(db, 'matches', matchId), match);
+        if (!existingIds.has(matchId)) {
+          batch.set(doc(db, 'matches', matchId), match);
+          addedCount++;
+        }
       });
 
-      await batch.commit();
-      console.log("[AutoSeed] Successfully seeded 72 group stage matches.");
+      if (addedCount > 0) {
+        await batch.commit();
+        console.log(`[AutoSeed] Successfully seeded ${addedCount} missing group stage matches.`);
+      } else {
+        console.log("[AutoSeed] No missing group stage matches to seed.");
+      }
     }
 
     // Seed parley questions if needed

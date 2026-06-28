@@ -308,6 +308,45 @@ export function Rules() {
 
       </div>
 
+      {/* PLAYOFFS RULES */}
+      <section className="bg-slate-900 text-white p-6 sm:p-8 rounded-3xl border border-slate-800 space-y-6 shadow-xl">
+        <div className="flex items-center gap-3 font-sans">
+          <div className="w-10 h-10 rounded-2xl bg-emerald-500 text-white flex items-center justify-center font-black">
+            <Trophy className="w-5 h-5 text-slate-950 fill-slate-950" />
+          </div>
+          <div>
+            <h2 className="text-xl font-extrabold text-white font-display">Reglas Especiales de Playoffs</h2>
+            <p className="text-xs text-slate-400">Cómo se calculan y suman los puntos en la fase de eliminación directa de forma justa.</p>
+          </div>
+        </div>
+
+        <div className="grid gap-6 md:grid-cols-2 text-xs leading-relaxed text-slate-300 font-sans">
+          <div className="bg-slate-950 p-5 rounded-2xl border border-slate-850 space-y-3">
+            <h3 className="font-black text-emerald-400 text-sm flex items-center gap-1.5">
+              ⚽ Acierto de Selección Clasificada (+3 Puntos)
+            </h3>
+            <p>
+              Sumarás <strong>+3 puntos por cada equipo real</strong> que clasifique a un partido de playoffs (Dieciseisavos, Octavos, etc.) si coincide con la selección que tú proyectaste en esa posición en tu simulación inicial.
+            </p>
+            <p className="text-2xs text-slate-500 font-semibold uppercase tracking-wider">
+              ¡Premia tu puntería al proyectar los clasificados de la fase de grupos!
+            </p>
+          </div>
+
+          <div className="bg-slate-950 p-5 rounded-2xl border border-slate-850 space-y-3">
+            <h3 className="font-black text-indigo-400 text-sm flex items-center gap-1.5">
+              🎯 Acierto de Marcador (Hasta +8 Puntos)
+            </h3>
+            <p>
+              Para sumar puntos por marcador (Acierto Exacto, Parcial o Básico) en una ranura de playoffs, <strong>los dos equipos reales que jueguen deben coincidir con tu predicción</strong>. Si tus equipos predichos no alcanzaron esta ronda real, sumas 0 por goles en ese partido.
+            </p>
+            <p className="text-2xs text-slate-500 font-semibold uppercase tracking-wider">
+              Evita que se ganen puntos por marcadores de equipos eliminados.
+            </p>
+          </div>
+        </div>
+      </section>
+
       {/* FREQUENTLY ASKED QUESTIONS */}
       <section className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
         <div className="flex items-center gap-3">

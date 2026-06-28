@@ -84,3 +84,22 @@ export function calculateMatchPoints(predA: number, predB: number, realA: number
 
   return points;
 }
+
+export interface KnockoutSource {
+  type: 'group' | 'thirds' | 'match_winner' | 'match_loser';
+  rank?: number;
+  group?: string;
+  index?: number;
+  matchId?: string;
+}
+
+export interface KnockoutMatchConfig {
+  id: string;
+  phase: 'dieciseisavos' | 'octavos' | 'cuartos' | 'semifinales' | 'final' | 'tercer_lugar';
+  label: string;
+  dateStr: string;
+  timeStr: string;
+  stadium: string;
+  teamASource: KnockoutSource;
+  teamBSource: KnockoutSource;
+}
