@@ -647,7 +647,7 @@ export function calculateAllKnockoutPointsForUser(
     const predsInPhase: { matchId: string; pred: Prediction; predTeamA: string; predTeamB: string }[] = [];
     phase.matchIds.forEach(mId => {
       const pred = userPredsMap[mId];
-      if (pred) {
+      if (pred && pred.scoreA !== undefined && pred.scoreB !== undefined && pred.scoreA !== null && pred.scoreB !== null) {
         const predTeamA = resolvedBracket[mId]?.teamA;
         const predTeamB = resolvedBracket[mId]?.teamB;
         if (predTeamA && predTeamB && predTeamA !== 'Pendiente' && predTeamB !== 'Pendiente') {
@@ -675,8 +675,8 @@ export function calculateAllKnockoutPointsForUser(
         const pts = calculateKnockoutPoints(
           p.predTeamA,
           p.predTeamB,
-          p.pred.scoreA,
-          p.pred.scoreB,
+          Number(p.pred.scoreA),
+          Number(p.pred.scoreB),
           realMatch.teamA,
           realMatch.teamB,
           realMatch.scoreA!,
@@ -699,11 +699,23 @@ export function calculateAllKnockoutPointsForUser(
       );
       if (realMatchA) {
         pts += 3; // +3 classification points
-        const userPredWinner = p.pred.scoreA > p.pred.scoreB ? p.predTeamA : (p.pred.scoreB > p.pred.scoreA ? p.predTeamB : (p.pred.winnerId === 'A' ? p.predTeamA : (p.pred.winnerId === 'B' ? p.predTeamB : null)));
+        const userPredWinner = Number(p.pred.scoreA) > Number(p.pred.scoreB) ? p.predTeamA : (Number(p.pred.scoreB) > Number(p.pred.scoreA) ? p.predTeamB : (p.pred.winnerId === 'A' ? p.predTeamA : (p.pred.winnerId === 'B' ? p.predTeamB : null)));
         if (userPredWinner && userPredWinner.toLowerCase().trim() === p.predTeamA.toLowerCase().trim()) {
           const realWinner = realMatchA.scoreA! > realMatchA.scoreB! ? realMatchA.teamA : (realMatchA.scoreB! > realMatchA.scoreA! ? realMatchA.teamB : (realMatchA as any).winnerId === 'A' ? realMatchA.teamA : (realMatchA as any).winnerId === 'B' ? realMatchA.teamB : null);
           if (realWinner && realWinner.toLowerCase().trim() === p.predTeamA.toLowerCase().trim()) {
             pts += 5; // +5 outcome points
+
+            // Compare score
+            const predGoalsWinner = Number(p.pred.scoreA);
+            const predGoalsOpp = Number(p.pred.scoreB);
+            const realGoalsWinner = realMatchA.teamA.toLowerCase().trim() === p.predTeamA.toLowerCase().trim() ? realMatchA.scoreA! : realMatchA.scoreB!;
+            const realGoalsOpp = realMatchA.teamA.toLowerCase().trim() === p.predTeamA.toLowerCase().trim() ? realMatchA.scoreB! : realMatchA.scoreA!;
+
+            if (predGoalsWinner === realGoalsWinner && predGoalsOpp === realGoalsOpp) {
+              pts += 3; // exact score
+            } else if (predGoalsWinner === realGoalsWinner || predGoalsOpp === realGoalsOpp) {
+              pts += 1; // partial score
+            }
           }
         }
       }
@@ -715,11 +727,23 @@ export function calculateAllKnockoutPointsForUser(
       );
       if (realMatchB) {
         pts += 3; // +3 classification points
-        const userPredWinner = p.pred.scoreA > p.pred.scoreB ? p.predTeamA : (p.pred.scoreB > p.pred.scoreA ? p.predTeamB : (p.pred.winnerId === 'A' ? p.predTeamA : (p.pred.winnerId === 'B' ? p.predTeamB : null)));
+        const userPredWinner = Number(p.pred.scoreA) > Number(p.pred.scoreB) ? p.predTeamA : (Number(p.pred.scoreB) > Number(p.pred.scoreA) ? p.predTeamB : (p.pred.winnerId === 'A' ? p.predTeamA : (p.pred.winnerId === 'B' ? p.predTeamB : null)));
         if (userPredWinner && userPredWinner.toLowerCase().trim() === p.predTeamB.toLowerCase().trim()) {
           const realWinner = realMatchB.scoreA! > realMatchB.scoreB! ? realMatchB.teamA : (realMatchB.scoreB! > realMatchB.scoreA! ? realMatchB.teamB : (realMatchB as any).winnerId === 'A' ? realMatchB.teamA : (realMatchB as any).winnerId === 'B' ? realMatchB.teamB : null);
           if (realWinner && realWinner.toLowerCase().trim() === p.predTeamB.toLowerCase().trim()) {
             pts += 5; // +5 outcome points
+
+            // Compare score
+            const predGoalsWinner = Number(p.pred.scoreB);
+            const predGoalsOpp = Number(p.pred.scoreA);
+            const realGoalsWinner = realMatchB.teamA.toLowerCase().trim() === p.predTeamB.toLowerCase().trim() ? realMatchB.scoreA! : realMatchB.scoreB!;
+            const realGoalsOpp = realMatchB.teamA.toLowerCase().trim() === p.predTeamB.toLowerCase().trim() ? realMatchB.scoreB! : realMatchB.scoreA!;
+
+            if (predGoalsWinner === realGoalsWinner && predGoalsOpp === realGoalsOpp) {
+              pts += 3; // exact score
+            } else if (predGoalsWinner === realGoalsWinner || predGoalsOpp === realGoalsOpp) {
+              pts += 1; // partial score
+            }
           }
         }
       }

@@ -376,15 +376,40 @@ export function Audit() {
                              ['Semifinales', 'Tercer Lugar', 'Final'];
 
                            const phaseMatches = matches.filter(m => phaseGroupNames.includes(m.group));
-                           const matchingRealMatch = phaseMatches.find(m => 
+                           const exactRealMatch = phaseMatches.find(m => 
                              userMatchup.teamA && userMatchup.teamB &&
                              userMatchup.teamA !== 'Pendiente' && userMatchup.teamB !== 'Pendiente' &&
                              ((m.teamA.toLowerCase().trim() === userMatchup.teamA.toLowerCase().trim() && m.teamB.toLowerCase().trim() === userMatchup.teamB.toLowerCase().trim()) ||
                               (m.teamA.toLowerCase().trim() === userMatchup.teamB.toLowerCase().trim() && m.teamB.toLowerCase().trim() === userMatchup.teamA.toLowerCase().trim()))
                            );
 
-                           const realMatch = matchingRealMatch || matches.find(m => m.id === cfg.id);
-                           const isFinished = realMatch?.status === 'finished';
+                           let realMatch = exactRealMatch;
+                           let isFinished = false;
+
+                           if (exactRealMatch) {
+                             isFinished = exactRealMatch.status === 'finished';
+                           } else {
+                             const userPredWinner = Number(pred.scoreA) > Number(pred.scoreB) ? userMatchup.teamA : 
+                                                    (Number(pred.scoreB) > Number(pred.scoreA) ? userMatchup.teamB : 
+                                                    (pred.winnerId === 'A' ? userMatchup.teamA : 
+                                                    (pred.winnerId === 'B' ? userMatchup.teamB : null)));
+                             
+                             if (userPredWinner && userPredWinner !== 'Pendiente') {
+                               const winnerRealMatch = phaseMatches.find(m => 
+                                 m.teamA.toLowerCase().trim() === userPredWinner.toLowerCase().trim() ||
+                                 m.teamB.toLowerCase().trim() === userPredWinner.toLowerCase().trim()
+                               );
+                               if (winnerRealMatch && winnerRealMatch.status === 'finished') {
+                                 realMatch = winnerRealMatch;
+                                 isFinished = true;
+                               }
+                             }
+                           }
+
+                           if (!realMatch) {
+                             realMatch = matches.find(m => m.id === cfg.id);
+                             isFinished = false;
+                           }
 
                           return (
                             <div key={cfg.id} className="bg-white p-4 border border-slate-200 rounded-2xl flex flex-col justify-between shadow-xs gap-3">
@@ -575,15 +600,40 @@ export function Audit() {
                       ['Semifinales', 'Tercer Lugar', 'Final'];
 
                     const phaseMatches = matches.filter(m => phaseGroupNames.includes(m.group));
-                    const matchingRealMatch = phaseMatches.find(m => 
+                    const exactRealMatch = phaseMatches.find(m => 
                       userMatchup.teamA && userMatchup.teamB &&
                       userMatchup.teamA !== 'Pendiente' && userMatchup.teamB !== 'Pendiente' &&
                       ((m.teamA.toLowerCase().trim() === userMatchup.teamA.toLowerCase().trim() && m.teamB.toLowerCase().trim() === userMatchup.teamB.toLowerCase().trim()) ||
                        (m.teamA.toLowerCase().trim() === userMatchup.teamB.toLowerCase().trim() && m.teamB.toLowerCase().trim() === userMatchup.teamA.toLowerCase().trim()))
                     );
 
-                    const realMatch = matchingRealMatch || matches.find(m => m.id === cfg.id);
-                    const isFinished = realMatch?.status === 'finished';
+                    let realMatch = exactRealMatch;
+                    let isFinished = false;
+
+                    if (exactRealMatch) {
+                      isFinished = exactRealMatch.status === 'finished';
+                    } else {
+                      const userPredWinner = Number(pred.scoreA) > Number(pred.scoreB) ? userMatchup.teamA : 
+                                             (Number(pred.scoreB) > Number(pred.scoreA) ? userMatchup.teamB : 
+                                             (pred.winnerId === 'A' ? userMatchup.teamA : 
+                                             (pred.winnerId === 'B' ? userMatchup.teamB : null)));
+                      
+                      if (userPredWinner && userPredWinner !== 'Pendiente') {
+                        const winnerRealMatch = phaseMatches.find(m => 
+                          m.teamA.toLowerCase().trim() === userPredWinner.toLowerCase().trim() ||
+                          m.teamB.toLowerCase().trim() === userPredWinner.toLowerCase().trim()
+                        );
+                        if (winnerRealMatch && winnerRealMatch.status === 'finished') {
+                          realMatch = winnerRealMatch;
+                          isFinished = true;
+                        }
+                      }
+                    }
+
+                    if (!realMatch) {
+                      realMatch = matches.find(m => m.id === cfg.id);
+                      isFinished = false;
+                    }
 
                     return (
                       <div key={cfg.id} className="print-match-card">
