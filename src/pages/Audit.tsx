@@ -368,8 +368,23 @@ export function Audit() {
                         {phaseConfigs.map(cfg => {
                           const pred = (predictions[cfg.id] || { scoreA: undefined, scoreB: undefined, points: undefined }) as Prediction;
                           const userMatchup = userResolvedBracket[cfg.id] || { teamA: 'Pendiente', teamB: 'Pendiente' };
-                          const realMatch = matches.find(m => m.id === cfg.id);
-                          const isFinished = realMatch?.status === 'finished';
+                           // Find real match of same phase that matches user's predicted teams
+                           const phaseGroupNames = 
+                             cfg.phase === 'dieciseisavos' ? ['Dieciseisavos'] :
+                             cfg.phase === 'octavos' ? ['Octavos', 'Octavos de Final'] :
+                             cfg.phase === 'cuartos' ? ['Cuartos', 'Cuartos de Final'] :
+                             ['Semifinales', 'Tercer Lugar', 'Final'];
+
+                           const phaseMatches = matches.filter(m => phaseGroupNames.includes(m.group));
+                           const matchingRealMatch = phaseMatches.find(m => 
+                             userMatchup.teamA && userMatchup.teamB &&
+                             userMatchup.teamA !== 'Pendiente' && userMatchup.teamB !== 'Pendiente' &&
+                             ((m.teamA.toLowerCase().trim() === userMatchup.teamA.toLowerCase().trim() && m.teamB.toLowerCase().trim() === userMatchup.teamB.toLowerCase().trim()) ||
+                              (m.teamA.toLowerCase().trim() === userMatchup.teamB.toLowerCase().trim() && m.teamB.toLowerCase().trim() === userMatchup.teamA.toLowerCase().trim()))
+                           );
+
+                           const realMatch = matchingRealMatch || matches.find(m => m.id === cfg.id);
+                           const isFinished = realMatch?.status === 'finished';
 
                           return (
                             <div key={cfg.id} className="bg-white p-4 border border-slate-200 rounded-2xl flex flex-col justify-between shadow-xs gap-3">
@@ -552,7 +567,22 @@ export function Audit() {
                   return phaseConfigs.map(cfg => {
                     const pred = (predictions[cfg.id] || { scoreA: undefined, scoreB: undefined, points: undefined }) as Prediction;
                     const userMatchup = userResolvedBracket[cfg.id] || { teamA: 'Pendiente', teamB: 'Pendiente' };
-                    const realMatch = matches.find(m => m.id === cfg.id);
+                    // Find real match of same phase that matches user's predicted teams
+                    const phaseGroupNames = 
+                      cfg.phase === 'dieciseisavos' ? ['Dieciseisavos'] :
+                      cfg.phase === 'octavos' ? ['Octavos', 'Octavos de Final'] :
+                      cfg.phase === 'cuartos' ? ['Cuartos', 'Cuartos de Final'] :
+                      ['Semifinales', 'Tercer Lugar', 'Final'];
+
+                    const phaseMatches = matches.filter(m => phaseGroupNames.includes(m.group));
+                    const matchingRealMatch = phaseMatches.find(m => 
+                      userMatchup.teamA && userMatchup.teamB &&
+                      userMatchup.teamA !== 'Pendiente' && userMatchup.teamB !== 'Pendiente' &&
+                      ((m.teamA.toLowerCase().trim() === userMatchup.teamA.toLowerCase().trim() && m.teamB.toLowerCase().trim() === userMatchup.teamB.toLowerCase().trim()) ||
+                       (m.teamA.toLowerCase().trim() === userMatchup.teamB.toLowerCase().trim() && m.teamB.toLowerCase().trim() === userMatchup.teamA.toLowerCase().trim()))
+                    );
+
+                    const realMatch = matchingRealMatch || matches.find(m => m.id === cfg.id);
                     const isFinished = realMatch?.status === 'finished';
 
                     return (

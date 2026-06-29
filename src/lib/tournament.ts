@@ -621,3 +621,112 @@ function getScorePointsOnly(predA: number, predB: number, realA: number, realB: 
   }
   return points;
 }
+
+/**
+ * Calculates points for all knockout predictions of a user by matching matchups by teams
+ * within the same phase, and falling back to individual team evaluation.
+ */
+export function calculateAllKnockoutPointsForUser(
+  userPredsMap: Record<string, Prediction>,
+  dbMatches: Match[]
+): Record<string, number> {
+  const resolvedBracket = resolveUserPredictionsBracket(userPredsMap, dbMatches);
+  const pointsMap: Record<string, number> = {};
+
+  const phases = [
+    { name: 'dieciseisavos', matchIds: ['ko_73', 'ko_74', 'ko_75', 'ko_76', 'ko_77', 'ko_78', 'ko_79', 'ko_80', 'ko_81', 'ko_82', 'ko_83', 'ko_84', 'ko_85', 'ko_86', 'ko_87', 'ko_88'] },
+    { name: 'octavos', matchIds: ['ko_89', 'ko_90', 'ko_91', 'ko_92', 'ko_93', 'ko_94', 'ko_95', 'ko_96'] },
+    { name: 'cuartos', matchIds: ['ko_97', 'ko_98', 'ko_99', 'ko_100'] },
+    { name: 'semis_final', matchIds: ['ko_101', 'ko_102', 'ko_103', 'ko_104'] }
+  ];
+
+  phases.forEach(phase => {
+    const realMatchesInPhase = dbMatches.filter(m => phase.matchIds.includes(m.id) && m.status === 'finished');
+
+    // Get all user predictions for this phase
+    const predsInPhase: { matchId: string; pred: Prediction; predTeamA: string; predTeamB: string }[] = [];
+    phase.matchIds.forEach(mId => {
+      const pred = userPredsMap[mId];
+      if (pred) {
+        const predTeamA = resolvedBracket[mId]?.teamA;
+        const predTeamB = resolvedBracket[mId]?.teamB;
+        if (predTeamA && predTeamB && predTeamA !== 'Pendiente' && predTeamB !== 'Pendiente') {
+          predsInPhase.push({ matchId: mId, pred, predTeamA, predTeamB });
+        }
+      }
+    });
+
+    // Initialize all to 0
+    phase.matchIds.forEach(mId => { pointsMap[mId] = 0; });
+
+    // Track matched real matches to avoid double-matching
+    const matchedRealMatchIds = new Set<string>();
+
+    // First pass: Exact matchup matching (same two teams)
+    predsInPhase.forEach(p => {
+      const realMatch = realMatchesInPhase.find(r => 
+        !matchedRealMatchIds.has(r.id) &&
+        ((r.teamA.toLowerCase().trim() === p.predTeamA.toLowerCase().trim() && r.teamB.toLowerCase().trim() === p.predTeamB.toLowerCase().trim()) ||
+         (r.teamA.toLowerCase().trim() === p.predTeamB.toLowerCase().trim() && r.teamB.toLowerCase().trim() === p.predTeamA.toLowerCase().trim()))
+      );
+
+      if (realMatch) {
+        matchedRealMatchIds.add(realMatch.id);
+        const pts = calculateKnockoutPoints(
+          p.predTeamA,
+          p.predTeamB,
+          p.pred.scoreA,
+          p.pred.scoreB,
+          realMatch.teamA,
+          realMatch.teamB,
+          realMatch.scoreA!,
+          realMatch.scoreB!
+        );
+        pointsMap[p.matchId] = pts;
+      }
+    });
+
+    // Second pass: Individual team evaluation for unmatched predictions
+    predsInPhase.forEach(p => {
+      if (pointsMap[p.matchId] > 0) return; // Already matched in first pass
+
+      let pts = 0;
+
+      // Evaluate Team A
+      const realMatchA = realMatchesInPhase.find(r => 
+        r.teamA.toLowerCase().trim() === p.predTeamA.toLowerCase().trim() ||
+        r.teamB.toLowerCase().trim() === p.predTeamA.toLowerCase().trim()
+      );
+      if (realMatchA) {
+        pts += 3; // +3 classification points
+        const userPredWinner = p.pred.scoreA > p.pred.scoreB ? p.predTeamA : (p.pred.scoreB > p.pred.scoreA ? p.predTeamB : (p.pred.winnerId === 'A' ? p.predTeamA : (p.pred.winnerId === 'B' ? p.predTeamB : null)));
+        if (userPredWinner && userPredWinner.toLowerCase().trim() === p.predTeamA.toLowerCase().trim()) {
+          const realWinner = realMatchA.scoreA! > realMatchA.scoreB! ? realMatchA.teamA : (realMatchA.scoreB! > realMatchA.scoreA! ? realMatchA.teamB : (realMatchA as any).winnerId === 'A' ? realMatchA.teamA : (realMatchA as any).winnerId === 'B' ? realMatchA.teamB : null);
+          if (realWinner && realWinner.toLowerCase().trim() === p.predTeamA.toLowerCase().trim()) {
+            pts += 5; // +5 outcome points
+          }
+        }
+      }
+
+      // Evaluate Team B
+      const realMatchB = realMatchesInPhase.find(r => 
+        r.teamA.toLowerCase().trim() === p.predTeamB.toLowerCase().trim() ||
+        r.teamB.toLowerCase().trim() === p.predTeamB.toLowerCase().trim()
+      );
+      if (realMatchB) {
+        pts += 3; // +3 classification points
+        const userPredWinner = p.pred.scoreA > p.pred.scoreB ? p.predTeamA : (p.pred.scoreB > p.pred.scoreA ? p.predTeamB : (p.pred.winnerId === 'A' ? p.predTeamA : (p.pred.winnerId === 'B' ? p.predTeamB : null)));
+        if (userPredWinner && userPredWinner.toLowerCase().trim() === p.predTeamB.toLowerCase().trim()) {
+          const realWinner = realMatchB.scoreA! > realMatchB.scoreB! ? realMatchB.teamA : (realMatchB.scoreB! > realMatchB.scoreA! ? realMatchB.teamB : (realMatchB as any).winnerId === 'A' ? realMatchB.teamA : (realMatchB as any).winnerId === 'B' ? realMatchB.teamB : null);
+          if (realWinner && realWinner.toLowerCase().trim() === p.predTeamB.toLowerCase().trim()) {
+            pts += 5; // +5 outcome points
+          }
+        }
+      }
+
+      pointsMap[p.matchId] = pts;
+    });
+  });
+
+  return pointsMap;
+}

@@ -10,7 +10,8 @@ import {
   getThirdPlacedTeamsStatsData, 
   resolveTeamNameData, 
   calculateKnockoutPoints, 
-  resolveUserPredictionsBracket 
+  resolveUserPredictionsBracket,
+  calculateAllKnockoutPointsForUser
 } from '../lib/tournament';
 
 export function Admin() {
@@ -270,56 +271,11 @@ export function Admin() {
       return { id: doc.id, ...data } as Match;
     });
 
-    const isKnockout = matchId.startsWith('ko_');
+    // 2. Recalculate all prediction points for all users using team-based matching
+    await updateAllPredictionsPointsInDb(dbMatches);
 
-    // 2. Fetch all predictions in one go to construct in-memory user maps (massive query optimization)
-    const allPredsSnap = await getDocsFromServer(collection(db, 'predictions'));
-    const predsByUser: Record<string, Record<string, Prediction>> = {};
-    allPredsSnap.docs.forEach(d => {
-      const data = d.data() as Prediction;
-      if (!predsByUser[data.userId]) {
-        predsByUser[data.userId] = {};
-      }
-      predsByUser[data.userId][data.matchId] = data;
-    });
-
-    // 3. Get all user predictions for this match to update
-    const predsSnap = await getDocsFromServer(query(collection(db, 'predictions'), where('matchId', '==', matchId)));
-    const batch = writeBatch(db);
-
-    for (const pDoc of predsSnap.docs) {
-      const pred = pDoc.data() as Prediction;
-      let points = 0;
-
-      if (isKnockout) {
-        // Resolve user's theoretical matchup for this knockout match in-memory
-        const userPredsMap = predsByUser[pred.userId] || {};
-        const resolvedBracket = resolveUserPredictionsBracket(userPredsMap, dbMatches);
-        const resolvedMatchup = resolvedBracket[matchId] || { teamA: 'Pendiente', teamB: 'Pendiente' };
-
-        // Fetch real teams of this match
-        const realMatch = dbMatches.find(m => m.id === matchId)!;
-
-        points = calculateKnockoutPoints(
-          resolvedMatchup.teamA,
-          resolvedMatchup.teamB,
-          pred.scoreA,
-          pred.scoreB,
-          realMatch.teamA,
-          realMatch.teamB,
-          scoreA,
-          scoreB
-        );
-      } else {
-        // Group stage match
-        points = calculateMatchPoints(pred.scoreA, pred.scoreB, scoreA, scoreB);
-      }
-
-      batch.update(pDoc.ref, { points });
-    }
-
-    await batch.commit();
-    await recalculateLeaderboard();
+    // 3. Recalculate leaderboard silently
+    await recalculateLeaderboard(false);
     fetchMatches();
   };
 
@@ -330,20 +286,74 @@ export function Admin() {
       const isCorrect = aDoc.data().answer.toLowerCase().trim() === correctAnswer.toLowerCase().trim();
       await updateDoc(aDoc.ref, { points: isCorrect ? 10 : 0 });
     }
-    await recalculateLeaderboard();
+    await recalculateLeaderboard(false);
     fetchParley();
   };
 
-  const recalculateLeaderboard = async () => {
+  const updateAllPredictionsPointsInDb = async (dbMatches: Match[]) => {
+    const allPredsSnap = await getDocsFromServer(collection(db, 'predictions'));
+    const predsByUser: Record<string, Prediction[]> = {};
+    allPredsSnap.docs.forEach(d => {
+      const pred = { id: d.id, ...d.data() } as Prediction;
+      if (!predsByUser[pred.userId]) {
+        predsByUser[pred.userId] = [];
+      }
+      predsByUser[pred.userId].push(pred);
+    });
+
+    const batch = writeBatch(db);
+    let updateCount = 0;
+
+    for (const userId of Object.keys(predsByUser)) {
+      const userPreds = predsByUser[userId];
+      const userPredsMap: Record<string, Prediction> = {};
+      userPreds.forEach(p => { userPredsMap[p.matchId] = p; });
+
+      // Calculate all knockout points using our team-based matcher
+      const koPoints = calculateAllKnockoutPointsForUser(userPredsMap, dbMatches);
+
+      // Check and update knockout prediction points
+      userPreds.filter(p => p.matchId.startsWith('ko_')).forEach(p => {
+        const pts = koPoints[p.matchId] || 0;
+        if (p.points !== pts) {
+          batch.update(doc(db, 'predictions', p.id!), { points: pts });
+          updateCount++;
+        }
+      });
+
+      // Check and update group stage prediction points
+      userPreds.filter(p => !p.matchId.startsWith('ko_')).forEach(p => {
+        const realMatch = dbMatches.find(m => m.id === p.matchId);
+        if (realMatch && realMatch.status === 'finished') {
+          const pts = calculateMatchPoints(p.scoreA, p.scoreB, realMatch.scoreA!, realMatch.scoreB!);
+          if (p.points !== pts) {
+            batch.update(doc(db, 'predictions', p.id!), { points: pts });
+            updateCount++;
+          }
+        }
+      });
+    }
+
+    if (updateCount > 0) {
+      await batch.commit();
+      console.log(`[Points Sync] Recalculated and updated points for ${updateCount} predictions.`);
+    }
+  };
+
+  const recalculateLeaderboard = async (showAlert = true) => {
     setIsSeeding(true);
     try {
       // 1. Get all active matches and parley questions FROM SERVER (not cache)
       const matchesSnap = await getDocsFromServer(collection(db, 'matches'));
-      const activeMatchIds = new Set(matchesSnap.docs.map(d => d.id));
+      const dbMatches = matchesSnap.docs.map(d => ({ id: d.id, ...d.data() } as Match));
+      const activeMatchIds = new Set(dbMatches.map(d => d.id));
       
       const parleyQuestionsSnap = await getDocsFromServer(collection(db, 'parleyQuestions'));
       const activeQuestionIds = new Set(parleyQuestionsSnap.docs.map(d => d.id));
       
+      // Update all prediction points first!
+      await updateAllPredictionsPointsInDb(dbMatches);
+
       // 2. Get all predictions and parley answers FROM SERVER
       const predsSnap = await getDocsFromServer(collection(db, 'predictions'));
       const parleyAnswersSnap = await getDocsFromServer(collection(db, 'parleyAnswers'));
@@ -457,10 +467,14 @@ export function Admin() {
       await userUpdateBatch.commit();
       
       // allUsers will auto-update via the onSnapshot listener
-      alert(`Sincronización masiva finalizada:\n- Perfiles existentes actualizados: ${updatedCount}\n- Perfiles huérfanos creados: ${restoredCount}`);
+      if (showAlert) {
+        alert(`Sincronización masiva finalizada:\n- Perfiles existentes actualizados: ${updatedCount}\n- Perfiles huérfanos creados: ${restoredCount}`);
+      }
     } catch (e) {
       console.error("Error in recalculateLeaderboard:", e);
-      alert("Error al actualizar la tabla: " + (e instanceof Error ? e.message : String(e)));
+      if (showAlert) {
+        alert("Error al actualizar la tabla: " + (e instanceof Error ? e.message : String(e)));
+      }
     } finally {
       setIsSeeding(false);
     }
