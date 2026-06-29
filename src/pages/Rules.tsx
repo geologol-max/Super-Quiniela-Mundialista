@@ -75,6 +75,102 @@ export function Rules() {
         </div>
       </header>
 
+      {/* HIGHLIGHTED PLAYOFF SCORING RULES - CANADA EXAMPLE */}
+      <motion.section 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="bg-gradient-to-br from-indigo-900 via-indigo-950 to-slate-900 text-white p-6 sm:p-8 rounded-3xl border-2 border-indigo-500/50 shadow-2xl relative overflow-hidden space-y-6"
+      >
+        <div className="absolute top-0 right-0 p-6 opacity-[0.05] pointer-events-none">
+          <Trophy className="w-48 h-48 text-indigo-450" />
+        </div>
+        
+        <div className="relative z-10 space-y-3">
+          <div className="inline-flex items-center gap-2 bg-emerald-500/20 text-emerald-300 px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-wider border border-emerald-500/30 animate-pulse">
+            <Star className="w-4 h-4 fill-emerald-300 text-emerald-300" />
+            ¡Importante: Reglas Especiales de Playoffs Activas!
+          </div>
+          <h2 className="text-xl sm:text-2xl font-black font-display tracking-tight text-white">
+            ¿Cómo se calculan los puntos en Playoffs? (Caso Real de Canadá 🇨🇦)
+          </h2>
+          <p className="text-slate-300 text-xs sm:text-sm leading-relaxed max-w-4xl">
+            En la fase eliminatoria (Playoffs), los puntos de goles y ganadores se calculan <strong>por equipo</strong>, sin importar si el emparejamiento exacto coincide con el que proyectaste. Si uno de tus equipos clasificados juega en la realidad, ¡participas por los puntos de su partido!
+          </p>
+        </div>
+
+        <div className="grid gap-6 md:grid-cols-3 text-xs leading-relaxed text-slate-350">
+          
+          {/* Clasificación card */}
+          <div className="bg-slate-950/60 backdrop-blur-sm p-5 rounded-2xl border border-indigo-900/40 space-y-3 relative overflow-hidden">
+            <span className="absolute top-2 right-2 text-2xs bg-indigo-500/25 text-indigo-300 px-2 py-0.5 rounded-full font-bold">Paso A</span>
+            <h4 className="font-extrabold text-emerald-455 text-sm flex items-center gap-1.5 font-sans text-emerald-400">
+              🏆 Clasificación (+3 Pts por equipo)
+            </h4>
+            <p className="text-slate-400">
+              Recibes <strong>+3 puntos</strong> por cada selección real que llegue a playoffs y que coincida con tus proyectados en esta fase.
+            </p>
+            <div className="bg-slate-900/80 p-2.5 rounded-xl border border-indigo-950 font-mono text-[10px] text-indigo-200">
+              <span className="block font-bold text-slate-400 uppercase text-[9px] mb-1">Ejemplo:</span>
+              Predijiste <strong>México vs Canadá</strong>. Como ambos clasificaron en realidad, sumas <strong>+6 Pts</strong> (+3 México, +3 Canadá).
+            </div>
+          </div>
+
+          {/* Winner card */}
+          <div className="bg-slate-950/60 backdrop-blur-sm p-5 rounded-2xl border border-indigo-900/40 space-y-3 relative overflow-hidden">
+            <span className="absolute top-2 right-2 text-2xs bg-indigo-500/25 text-indigo-300 px-2 py-0.5 rounded-full font-bold">Paso B</span>
+            <h4 className="font-extrabold text-indigo-400 text-sm flex items-center gap-1.5 font-sans">
+              🎯 Acierto de Ganador (+5 Pts)
+            </h4>
+            <p className="text-slate-400">
+              Si tu equipo proyectado como ganador avanza en su llave real (independientemente del rival), recibes **+5 puntos**.
+            </p>
+            <div className="bg-slate-900/80 p-2.5 rounded-xl border border-indigo-950 font-mono text-[10px] text-indigo-200">
+              <span className="block font-bold text-slate-400 uppercase text-[9px] mb-1">Ejemplo:</span>
+              Predijiste que ganaba <strong>Canadá</strong>. En realidad, jugó contra Sudáfrica y ganó. Sumas **+5 Pts** por ganador.
+            </div>
+          </div>
+
+          {/* Score card */}
+          <div className="bg-slate-950/60 backdrop-blur-sm p-5 rounded-2xl border border-indigo-900/40 space-y-3 relative overflow-hidden">
+            <span className="absolute top-2 right-2 text-2xs bg-indigo-500/25 text-indigo-300 px-2 py-0.5 rounded-full font-bold">Paso C</span>
+            <h4 className="font-extrabold text-amber-400 text-sm flex items-center gap-1.5 font-sans">
+              🥅 Goles y Marcadores (+3 ó +1 Pts)
+            </h4>
+            <p className="text-slate-400">
+              Se comparan tus goles predichos con los reales (los de tu ganador vs reales, y los de tu perdedor vs oponente real).
+            </p>
+            <div className="bg-slate-900/80 p-2.5 rounded-xl border border-indigo-950 font-mono text-[10px] text-indigo-200">
+              <span className="block font-bold text-slate-400 uppercase text-[9px] mb-1">Marcador Exacto (+3 Pts) / Parcial (+1 Pt):</span>
+              • Si predijiste <strong>Canadá 1 - 0 México</strong> y el real fue <strong>Canadá 1 - 0 Sudáfrica</strong>, sumas **+3 Pts**.
+              <br />• Si predijiste <strong>Canadá 2 - 0 México</strong>, sumas **+1 Pt** (coinciden los 0 goles del oponente).
+            </div>
+          </div>
+
+        </div>
+
+        {/* SUMMARY BADGES */}
+        <div className="bg-slate-900/80 p-4.5 rounded-2xl border border-indigo-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="space-y-1">
+            <span className="font-bold text-emerald-400">💡 Resumen del Puntaje en el ejemplo de Canadá:</span>
+            <p className="text-slate-400 text-[11px]">
+              • Predijiste <strong>México vs Canadá</strong> (ganando Canadá 2-1) ➔ Real: <strong>Sudáfrica 0 - 1 Canadá</strong>:
+            </p>
+          </div>
+          <div className="flex gap-2 flex-wrap sm:flex-nowrap">
+            <span className="bg-indigo-950 border border-indigo-900 text-slate-200 px-3 py-1.5 rounded-xl font-bold">
+              +6 Pts Clasificación
+            </span>
+            <span className="bg-indigo-950 border border-indigo-900 text-slate-200 px-3 py-1.5 rounded-xl font-bold">
+              +5 Pts Ganador
+            </span>
+            <span className="bg-emerald-950 border border-emerald-900 text-emerald-450 px-3 py-1.5 rounded-xl font-black text-emerald-400">
+              Total = 11 Puntos
+            </span>
+          </div>
+        </div>
+      </motion.section>
+
       {/* QUICK INSTRUCTIONS (STEPS TO PARTICIPATE) */}
       <section className="space-y-6">
         <div className="flex items-center gap-3">
@@ -335,13 +431,13 @@ export function Rules() {
 
           <div className="bg-slate-950 p-5 rounded-2xl border border-slate-850 space-y-3">
             <h3 className="font-black text-indigo-400 text-sm flex items-center gap-1.5">
-              🎯 Acierto de Marcador (Hasta +8 Puntos)
+              🎯 Acierto de Marcador y Ganador (Hasta +8 Puntos)
             </h3>
             <p>
-              Para sumar puntos por marcador (Acierto Exacto, Parcial o Básico) en una ranura de playoffs, <strong>los dos equipos reales que jueguen deben coincidir con tu predicción</strong>. Si tus equipos predichos no alcanzaron esta ronda real, sumas 0 por goles en ese partido.
+              Si tu equipo proyectado como ganador avanza en su llave real (independientemente del rival), recibes <strong>+5 puntos</strong> de ganador. Además, si acertaste sus goles y los goles del oponente en la llave real, sumas <strong>+3 puntos</strong> (marcador exacto) ó <strong>+1 punto</strong> (marcador parcial).
             </p>
             <p className="text-2xs text-slate-500 font-semibold uppercase tracking-wider">
-              Evita que se ganen puntos por marcadores de equipos eliminados.
+              ¡Sumas puntos de goles incluso si no juegan contra el rival que indicaste!
             </p>
           </div>
         </div>
