@@ -3,7 +3,7 @@ import { collection, addDoc, getDocs, getDocsFromServer, doc, setDoc, query, ord
 import { db } from '../lib/firebase';
 import { Match, UserProfile, Prediction, calculateMatchPoints, ParleyQuestion } from '../types';
 import { WORLD_CUP_TEAMS, OFFICIAL_2026_MATCHES_SEED } from '../lib/constants';
-import { Plus, Trash2, RefreshCw, Trophy, Users, CheckCircle, Check, Clock, Mail, BarChart2, AlertTriangle, Search, Database } from 'lucide-react';
+import { Plus, Trash2, RefreshCw, Trophy, Users, CheckCircle, Check, Clock, Mail, BarChart2, AlertTriangle, Search, Database, Edit2 } from 'lucide-react';
 import { 
   KNOCKOUT_MATCHES_CONFIG, 
   calculateAllGroupStandingsData, 
@@ -22,6 +22,7 @@ export function Admin() {
   const [usersError, setUsersError] = useState<string | null>(null);
   const [diagnosticResults, setDiagnosticResults] = useState<any>(null);
   const [runningDiagnostic, setRunningDiagnostic] = useState(false);
+  const [editingMatchId, setEditingMatchId] = useState<string | null>(null);
 
   // Parse Firestore user docs into UserProfile objects
   const parseUserDocs = (docs: any[]): UserProfile[] => {
@@ -114,6 +115,17 @@ export function Admin() {
         if (name === 'users') {
           entry.details = snap.docs.map(d => ({ uid: d.id, name: d.data().name, email: d.data().email }));
         }
+        if (name === 'matches') {
+          const existingIds = new Set(snap.docs.map(d => d.id));
+          const missing: any[] = [];
+          OFFICIAL_2026_MATCHES_SEED.forEach((match, idx) => {
+            const matchId = `match_2026_${idx + 1}`;
+            if (!existingIds.has(matchId)) {
+              missing.push({ id: matchId, ...match });
+            }
+          });
+          entry.missingGroupMatches = missing;
+        }
       } catch (err: any) {
         entry.error = `${err?.code || 'unknown'}: ${err?.message || String(err)}`;
         // Try cache fallback
@@ -141,6 +153,57 @@ export function Admin() {
 
     setDiagnosticResults(results);
     setRunningDiagnostic(false);
+  };
+
+  const restoreMissingGroupMatches = async (missing: any[]) => {
+    setIsSeeding(true);
+    try {
+      const batch = writeBatch(db);
+      missing.forEach(m => {
+        const { id, ...matchData } = m;
+        batch.set(doc(db, 'matches', id), matchData);
+      });
+      await batch.commit();
+      fetchMatches();
+      alert(`¡Se han restaurado los ${missing.length} partidos de fase de grupos faltantes con éxito!`);
+      // Re-run diagnostic to update the view
+      runDiagnostic();
+    } catch (e) {
+      console.error(e);
+      alert('Error al restaurar los partidos: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setIsSeeding(false);
+    }
+  };
+
+  const resetMatch = async (matchId: string) => {
+    setIsSeeding(true);
+    try {
+      const { deleteField } = await import('firebase/firestore');
+      const matchRef = doc(db, 'matches', matchId);
+      await updateDoc(matchRef, { 
+        scoreA: deleteField(), 
+        scoreB: deleteField(), 
+        status: 'scheduled' 
+      });
+
+      // Reset points to 0 for all predictions of this match
+      const predsSnap = await getDocsFromServer(query(collection(db, 'predictions'), where('matchId', '==', matchId)));
+      const batch = writeBatch(db);
+      predsSnap.docs.forEach(pDoc => {
+        batch.update(pDoc.ref, { points: 0 });
+      });
+      await batch.commit();
+
+      await recalculateLeaderboard();
+      fetchMatches();
+      alert('¡Partido restablecido a programado con éxito!');
+    } catch (e) {
+      console.error(e);
+      alert('Error al restablecer el partido: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setIsSeeding(false);
+    }
   };
 
   const fetchMatches = async () => {
@@ -534,6 +597,56 @@ export function Admin() {
     }
   };
 
+  const seedSpecificPlayoffs = async () => {
+    setIsSeeding(true);
+    try {
+      const batch = writeBatch(db);
+      
+      const specificMatches = [
+        { id: 'ko_73', teamA: 'Sudáfrica', teamB: 'Canadá', date: '2026-06-28T15:00:00Z', group: 'Dieciseisavos' },
+        { id: 'ko_74', teamA: 'Alemania', teamB: 'Paraguay', date: '2026-06-29T16:30:00Z', group: 'Dieciseisavos' },
+        { id: 'ko_75', teamA: 'Países Bajos', teamB: 'Marruecos', date: '2026-06-29T21:00:00Z', group: 'Dieciseisavos' },
+        { id: 'ko_76', teamA: 'Brasil', teamB: 'Japón', date: '2026-06-29T13:00:00Z', group: 'Dieciseisavos' },
+        { id: 'ko_77', teamA: 'Francia', teamB: 'Suecia', date: '2026-06-30T17:00:00Z', group: 'Dieciseisavos' },
+        { id: 'ko_78', teamA: 'Costa de Marfil', teamB: 'Noruega', date: '2026-06-30T13:00:00Z', group: 'Dieciseisavos' },
+        { id: 'ko_79', teamA: 'México', teamB: 'Ecuador', date: '2026-06-30T21:00:00Z', group: 'Dieciseisavos' },
+        { id: 'ko_80', teamA: 'Inglaterra', teamB: 'República Democrática del Congo', date: '2026-07-01T12:00:00Z', group: 'Dieciseisavos' },
+        { id: 'ko_81', teamA: 'Estados Unidos', teamB: 'Bosnia y Herzegovina', date: '2026-07-01T20:00:00Z', group: 'Dieciseisavos' },
+        { id: 'ko_82', teamA: 'Bélgica', teamB: 'Senegal', date: '2026-07-01T16:00:00Z', group: 'Dieciseisavos' },
+        { id: 'ko_83', teamA: 'Portugal', teamB: 'Croacia', date: '2026-07-02T19:00:00Z', group: 'Dieciseisavos' },
+        { id: 'ko_84', teamA: 'España', teamB: 'Austria', date: '2026-07-02T15:00:00Z', group: 'Dieciseisavos' },
+        { id: 'ko_85', teamA: 'Suiza', teamB: 'Argelia', date: '2026-07-02T23:00:00Z', group: 'Dieciseisavos' },
+        { id: 'ko_86', teamA: 'Argentina', teamB: 'Cabo Verde', date: '2026-07-03T18:00:00Z', group: 'Dieciseisavos' },
+        { id: 'ko_87', teamA: 'Colombia', teamB: 'Ghana', date: '2026-07-03T21:30:00Z', group: 'Dieciseisavos' },
+        { id: 'ko_88', teamA: 'Australia', teamB: 'Egipto', date: '2026-07-03T14:00:00Z', group: 'Dieciseisavos' }
+      ];
+
+      specificMatches.forEach(m => {
+        const docRef = doc(db, 'matches', m.id);
+        batch.set(docRef, {
+          teamA: m.teamA,
+          teamB: m.teamB,
+          date: m.date,
+          group: m.group,
+          status: 'scheduled'
+        }, { merge: true });
+      });
+
+      await batch.commit();
+
+      // Finalize Match 73: Sudáfrica 0 - 1 Canadá
+      await finalizeMatch('ko_73', 0, 1);
+
+      fetchMatches();
+      alert('¡Se han sembrado los 16 partidos oficiales de Dieciseisavos de final con éxito, y se finalizó el Partido 73 (Sudáfrica 0-1 Canadá)!');
+    } catch (e) {
+      console.error(e);
+      alert('Error al sembrar dieciseisavos oficiales: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setIsSeeding(false);
+    }
+  };
+
   return (
     <div className="space-y-10 pb-20">
       <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -565,6 +678,15 @@ export function Admin() {
           >
             <Trophy className="w-4 h-4" />
             Sembrar Playoffs Reales
+          </button>
+          <button 
+            onClick={seedSpecificPlayoffs}
+            disabled={isSeeding}
+            className="flex items-center gap-2 px-5 py-3 bg-teal-600 text-white rounded-xl shadow-lg shadow-teal-200 hover:bg-teal-700 disabled:opacity-50 transition font-bold"
+            title="Sembrar los 16 partidos oficiales de dieciseisavos de final"
+          >
+            <Trophy className="w-4 h-4" />
+            Sembrar Dieciseisavos Oficiales
           </button>
         </div>
       </header>
@@ -658,6 +780,36 @@ export function Admin() {
           {diagnosticResults.orphanedUserIds?.length === 0 && diagnosticResults.collections.users?.serverCount !== null && (
             <div className="bg-emerald-900/30 p-3 rounded-xl border border-emerald-700 text-emerald-300 text-sm font-bold flex items-center gap-2">
               <Check className="w-4 h-4" /> Todos los usuarios con pronósticos tienen perfil creado. Total usuarios con datos: {diagnosticResults.totalUniqueUsers}
+            </div>
+          )}
+
+          {/* Missing group stage matches */}
+          {diagnosticResults.collections.matches?.missingGroupMatches?.length > 0 && (
+            <div className="bg-red-900/30 p-4 rounded-xl border border-red-700">
+              <div className="text-xs font-bold text-red-400 uppercase tracking-wider mb-2">
+                ⚠️ {diagnosticResults.collections.matches.missingGroupMatches.length} Partidos de Fase de Grupos Faltantes
+              </div>
+              <div className="text-xs font-mono text-red-300 space-y-1 max-h-40 overflow-y-auto mb-3">
+                {diagnosticResults.collections.matches.missingGroupMatches.map((m: any) => (
+                  <div key={m.id}>
+                    [{m.id}] {m.group} | {m.teamA} vs {m.teamB} ({new Date(m.date).toLocaleDateString()})
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={() => restoreMissingGroupMatches(diagnosticResults.collections.matches.missingGroupMatches)}
+                disabled={isSeeding}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition disabled:opacity-50 flex items-center gap-2"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSeeding ? 'animate-spin' : ''}`} />
+                Restaurar Partidos Faltantes
+              </button>
+            </div>
+          )}
+
+          {diagnosticResults.collections.matches?.missingGroupMatches?.length === 0 && (
+            <div className="bg-emerald-900/30 p-3 rounded-xl border border-emerald-700 text-emerald-300 text-sm font-bold flex items-center gap-2">
+              <Check className="w-4 h-4" /> Todos los partidos de la Fase de Grupos están sembrados y presentes en la base de datos.
             </div>
           )}
 
@@ -901,19 +1053,64 @@ export function Admin() {
                         onClick={() => {
                           const a = (document.getElementById(`scoreA_${m.id}`) as HTMLInputElement).value;
                           const b = (document.getElementById(`scoreB_${m.id}`) as HTMLInputElement).value;
-                          if (a && b) finalizeMatch(m.id, parseInt(a), parseInt(b));
+                          if (a !== "" && b !== "") finalizeMatch(m.id, parseInt(a), parseInt(b));
                         }}
                         className="ml-2 px-4 py-2 bg-green-600 text-white rounded-lg text-xs font-bold uppercase tracking-wider"
                       >
                         Finalizar
                       </button>
                     </div>
+                  ) : editingMatchId === m.id ? (
+                    <div className="flex items-center gap-2 bg-amber-50 p-2 rounded-xl border border-amber-100 italic text-amber-900">
+                      <input type="number" defaultValue={m.scoreA} id={`scoreA_${m.id}`} className="w-16 p-2 border-none bg-transparent text-center font-black focus:outline-none" />
+                      <span className="text-amber-300">-</span>
+                      <input type="number" defaultValue={m.scoreB} id={`scoreB_${m.id}`} className="w-16 p-2 border-none bg-transparent text-center font-black focus:outline-none" />
+                      <button 
+                        onClick={() => {
+                          const a = (document.getElementById(`scoreA_${m.id}`) as HTMLInputElement).value;
+                          const b = (document.getElementById(`scoreB_${m.id}`) as HTMLInputElement).value;
+                          if (a !== "" && b !== "") {
+                            finalizeMatch(m.id, parseInt(a), parseInt(b));
+                            setEditingMatchId(null);
+                          }
+                        }}
+                        className="ml-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold uppercase tracking-wider"
+                      >
+                        Guardar
+                      </button>
+                      <button 
+                        onClick={() => setEditingMatchId(null)}
+                        className="ml-1 px-3 py-2 bg-slate-200 text-slate-700 rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-slate-300"
+                      >
+                        X
+                      </button>
+                    </div>
                   ) : (
-                    <div className="flex items-center gap-3 bg-green-50 text-green-700 px-4 py-2 rounded-xl font-black text-xl border border-green-100">
-                      <span>{m.scoreA}</span>
-                      <span className="opacity-30">-</span>
-                      <span>{m.scoreB}</span>
-                      <CheckCircle className="w-5 h-5" />
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 bg-green-50 text-green-700 px-4 py-2 rounded-xl font-black text-xl border border-green-100">
+                        <span>{m.scoreA}</span>
+                        <span className="opacity-30">-</span>
+                        <span>{m.scoreB}</span>
+                        <CheckCircle className="w-5 h-5" />
+                      </div>
+                      <button 
+                        onClick={() => setEditingMatchId(m.id)}
+                        className="p-2 hover:bg-slate-100 rounded-xl transition text-slate-500 hover:text-slate-800"
+                        title="Corregir resultado"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={() => {
+                          if (confirm(`¿Estás seguro de restablecer el partido ${m.teamA} vs ${m.teamB} a programado? Se borrará el marcador oficial y se recalcularán los puntos de los pronósticos de todos los usuarios.`)) {
+                            resetMatch(m.id);
+                          }
+                        }}
+                        className="p-2 hover:bg-slate-100 rounded-xl transition text-slate-500 hover:text-amber-600"
+                        title="Restablecer partido a programado"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                      </button>
                     </div>
                   )}
                   <button onClick={() => handleDeleteMatch(m.id)} className="p-3 text-red-400 hover:bg-red-50 hover:text-red-600 rounded-xl transition">

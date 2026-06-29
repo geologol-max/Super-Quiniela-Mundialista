@@ -27,7 +27,9 @@ export async function autoSeedCollections(db: any) {
       getDocs(collection(db, 'parleyQuestions'))
     ]);
 
-    const needsMatchSeed = matchesSnap.size < 72;
+    const existingIds = new Set(matchesSnap.docs.map(d => d.id));
+    const missingGroupMatchIds = OFFICIAL_2026_MATCHES_SEED.map((_, idx) => `match_2026_${idx + 1}`).filter(id => !existingIds.has(id));
+    const needsMatchSeed = missingGroupMatchIds.length > 0;
     const needsParleySeed = parleySnap.empty;
 
     if (!needsMatchSeed && !needsParleySeed) {
@@ -40,11 +42,10 @@ export async function autoSeedCollections(db: any) {
 
     // Seed matches if needed
     if (needsMatchSeed) {
-      console.log(`[AutoSeed] Matches collection has ${matchesSnap.size}/72 docs. Seeding missing official calendar...`);
+      console.log(`[AutoSeed] Seeding ${missingGroupMatchIds.length} missing official calendar group stage matches...`);
       const batch = writeBatch(db);
-
-      const existingIds = new Set(matchesSnap.docs.map(d => d.id));
       let addedCount = 0;
+      const restoredNames: string[] = [];
 
       // Add only official World Cup 2026 matches that don't already exist
       OFFICIAL_2026_MATCHES_SEED.forEach((match, idx) => {
@@ -52,12 +53,16 @@ export async function autoSeedCollections(db: any) {
         if (!existingIds.has(matchId)) {
           batch.set(doc(db, 'matches', matchId), match);
           addedCount++;
+          restoredNames.push(`${match.group}: ${match.teamA} vs ${match.teamB}`);
         }
       });
 
       if (addedCount > 0) {
         await batch.commit();
         console.log(`[AutoSeed] Successfully seeded ${addedCount} missing group stage matches.`);
+        if (typeof window !== 'undefined') {
+          alert(`🚨 ¡Se han detectado y restaurado automáticamente ${addedCount} partidos de fase de grupos faltantes:\n\n${restoredNames.join('\n')}`);
+        }
       } else {
         console.log("[AutoSeed] No missing group stage matches to seed.");
       }

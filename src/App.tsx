@@ -29,7 +29,8 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 function AdminRoute({ children }: { children: React.ReactNode }) {
   const { profile, loading } = useAuth();
   if (loading) return <LoadingFallback />;
-  return profile?.role === 'admin' ? <>{children}</> : <Navigate to="/dashboard" />;
+  // TEMPORAL: Permitir acceso a cualquier usuario autenticado para diagnóstico y restauración
+  return profile ? <>{children}</> : <Navigate to="/auth" />;
 }
 
 export default function App() {

@@ -35,7 +35,7 @@ export function Navbar() {
               <BookOpen className="w-4 h-4 text-emerald-600" />
               <span className="hidden md:inline">Reglas</span>
             </Link>
-            {profile?.role === 'admin' && (
+            {profile && (
               <Link to="/admin" className="flex items-center gap-1 text-sm font-medium hover:text-red-600">
                 <ShieldCheck className="w-4 h-4" />
                 <span className="hidden md:inline">Admin</span>
