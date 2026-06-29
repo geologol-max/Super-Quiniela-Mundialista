@@ -261,20 +261,8 @@ export function Admin() {
     const matchRef = doc(db, 'matches', matchId);
     await updateDoc(matchRef, { scoreA, scoreB, status: 'finished' });
 
-    // 1. Fetch matches from server to compute resolved user brackets
-    const matchesSnap = await getDocsFromServer(collection(db, 'matches'));
-    const dbMatches = matchesSnap.docs.map(doc => {
-      const data = doc.data();
-      if (doc.id === matchId) {
-        return { id: doc.id, ...data, scoreA, scoreB, status: 'finished' } as Match;
-      }
-      return { id: doc.id, ...data } as Match;
-    });
-
-    // 2. Recalculate all prediction points for all users using team-based matching
-    await updateAllPredictionsPointsInDb(dbMatches);
-
-    // 3. Recalculate leaderboard silently
+    // Single pass: recalculateLeaderboard internally calls updateAllPredictionsPointsInDb
+    // This avoids the race condition of double-calculating points
     await recalculateLeaderboard(false);
     fetchMatches();
   };
@@ -301,8 +289,8 @@ export function Admin() {
       predsByUser[pred.userId].push(pred);
     });
 
-    const batch = writeBatch(db);
-    let updateCount = 0;
+    // Collect all updates in an array first (avoids Firestore 500-op batch limit)
+    const pendingUpdates: { ref: any; data: { points: number } }[] = [];
 
     for (const userId of Object.keys(predsByUser)) {
       const userPreds = predsByUser[userId];
@@ -316,8 +304,7 @@ export function Admin() {
       userPreds.filter(p => p.matchId.startsWith('ko_')).forEach(p => {
         const pts = koPoints[p.matchId] || 0;
         if (p.points !== pts) {
-          batch.update(doc(db, 'predictions', p.id!), { points: pts });
-          updateCount++;
+          pendingUpdates.push({ ref: doc(db, 'predictions', p.id!), data: { points: pts } });
         }
       });
 
@@ -327,16 +314,22 @@ export function Admin() {
         if (realMatch && realMatch.status === 'finished') {
           const pts = calculateMatchPoints(p.scoreA, p.scoreB, realMatch.scoreA!, realMatch.scoreB!);
           if (p.points !== pts) {
-            batch.update(doc(db, 'predictions', p.id!), { points: pts });
-            updateCount++;
+            pendingUpdates.push({ ref: doc(db, 'predictions', p.id!), data: { points: pts } });
           }
         }
       });
     }
 
-    if (updateCount > 0) {
-      await batch.commit();
-      console.log(`[Points Sync] Recalculated and updated points for ${updateCount} predictions.`);
+    // Commit in chunked batches of 450 to stay under Firestore's 500-operation limit
+    if (pendingUpdates.length > 0) {
+      const BATCH_CHUNK_SIZE = 450;
+      for (let i = 0; i < pendingUpdates.length; i += BATCH_CHUNK_SIZE) {
+        const chunk = pendingUpdates.slice(i, i + BATCH_CHUNK_SIZE);
+        const batch = writeBatch(db);
+        chunk.forEach(u => batch.update(u.ref, u.data));
+        await batch.commit();
+      }
+      console.log(`[Points Sync] Recalculated and updated points for ${pendingUpdates.length} predictions in ${Math.ceil(pendingUpdates.length / BATCH_CHUNK_SIZE)} batch(es).`);
     }
   };
 
@@ -354,7 +347,10 @@ export function Admin() {
       // Update all prediction points first!
       await updateAllPredictionsPointsInDb(dbMatches);
 
-      // 2. Get all predictions and parley answers FROM SERVER
+      // 2. Wait for Firestore consistency before reading updated points
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // 3. Get all predictions and parley answers FROM SERVER (now with updated points)
       const predsSnap = await getDocsFromServer(collection(db, 'predictions'));
       const parleyAnswersSnap = await getDocsFromServer(collection(db, 'parleyAnswers'));
       
@@ -678,7 +674,7 @@ export function Admin() {
             Diagnóstico
           </button>
           <button 
-            onClick={recalculateLeaderboard}
+            onClick={() => recalculateLeaderboard()}
             disabled={isSeeding}
             className="flex items-center gap-2 px-5 py-3 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 disabled:opacity-50 transition font-bold"
           >
