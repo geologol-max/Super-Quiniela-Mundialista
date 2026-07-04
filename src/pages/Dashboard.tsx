@@ -40,6 +40,18 @@ export function Dashboard() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  const [showOctavosWelcome, setShowOctavosWelcome] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('hide_octavos_welcome') !== 'true';
+    }
+    return true;
+  });
+
+  const handleDismissWelcome = () => {
+    localStorage.setItem('hide_octavos_welcome', 'true');
+    setShowOctavosWelcome(false);
+  };
+
   // Sync profile metadata with local state when it loads
   useEffect(() => {
     if (profile) {
@@ -260,6 +272,125 @@ export function Dashboard() {
           </button>
         </div>
       </header>
+
+      {/* WELCOME TO OCTAVOS BANNER */}
+      {showOctavosWelcome && (
+        <motion.div
+          initial={{ opacity: 0, y: -20, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -20, scale: 0.95 }}
+          transition={{ duration: 0.5, type: 'spring', stiffness: 100 }}
+          className="relative overflow-hidden p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-indigo-900 via-purple-950 to-slate-900 border border-purple-500/30 text-white shadow-xl shadow-purple-500/5"
+        >
+          {/* Subtle glow background */}
+          <div className="absolute inset-0 bg-radial-gradient from-purple-500/10 via-transparent to-transparent pointer-events-none" />
+          
+          {/* Floating animated particles */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            {[...Array(6)].map((_, i) => (
+              <motion.span
+                key={i}
+                className="absolute text-purple-400/20 text-lg select-none"
+                initial={{
+                  x: Math.random() * 300,
+                  y: Math.random() * 200,
+                  scale: 0.5 + Math.random() * 0.8,
+                  opacity: 0.1
+                }}
+                animate={{
+                  y: [null, Math.random() * -100 - 50],
+                  opacity: [0.1, 0.4, 0.1],
+                  rotate: [0, 360]
+                }}
+                transition={{
+                  duration: 8 + Math.random() * 6,
+                  repeat: Infinity,
+                  ease: "linear",
+                  delay: Math.random() * 5
+                }}
+                style={{
+                  top: `${20 + Math.random() * 60}%`,
+                  left: `${10 + Math.random() * 80}%`
+                }}
+              >
+                {['✨', '⭐', '⚽', '🏆'][i % 4]}
+              </motion.span>
+            ))}
+          </div>
+
+          <div className="relative z-10 flex gap-4 items-start justify-between">
+            <div className="flex gap-3 sm:gap-4 items-start flex-col sm:flex-row">
+              {/* Animated Trophy Icon Container */}
+              <motion.div
+                animate={{ 
+                  scale: [1, 1.1, 1],
+                  rotate: [0, -5, 5, 0]
+                }}
+                transition={{ 
+                  duration: 2.5,
+                  repeat: Infinity,
+                  repeatType: "mirror"
+                }}
+                className="p-3 bg-gradient-to-br from-amber-400 to-amber-600 rounded-2xl shadow-lg shadow-amber-500/20 shrink-0"
+              >
+                <Trophy className="w-6 h-6 text-white" />
+              </motion.div>
+
+              <div className="space-y-1.5 max-w-xl">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] font-black tracking-widest text-purple-300 uppercase bg-purple-500/20 px-2 py-0.5 rounded-full border border-purple-400/25">
+                    Fase Final
+                  </span>
+                  <span className="text-xs font-bold text-amber-300 flex items-center gap-1">
+                    <Sparkles className="w-3.5 h-3.5 animate-pulse" />
+                    Octavos de Final
+                  </span>
+                </div>
+                <h3 className="text-lg sm:text-xl font-black font-display tracking-tight text-white leading-tight">
+                  ¡Bienvenidos a los Octavos de Final!
+                </h3>
+                <p className="text-xs sm:text-sm text-slate-200 leading-relaxed font-sans font-medium">
+                  Si has llegado hasta aquí y aún sigues sumando en tu quiniela, <strong className="text-yellow-400">¡muchas felicidades!</strong> 🥳🔥
+                </p>
+                <p className="text-[11px] text-slate-400 leading-normal">
+                  Recuerda: los puntos de esta fase se calculan incluyendo la clasificación (+3 pts) y el marcador final oficial. ¡Que ganen tus favoritos!
+                </p>
+              </div>
+            </div>
+
+            {/* Dismiss Button */}
+            <button
+              onClick={handleDismissWelcome}
+              className="p-2 hover:bg-white/10 active:scale-90 text-slate-400 hover:text-white rounded-xl transition-all shrink-0 border border-white/5"
+              aria-label="Cerrar"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </motion.div>
+      )}
+
+      {/* RE-SHOW PILL (Visible if closed, to be friendly to users) */}
+      {!showOctavosWelcome && (
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="flex justify-start"
+        >
+          <button 
+            onClick={() => {
+              localStorage.removeItem('hide_octavos_welcome');
+              setShowOctavosWelcome(true);
+            }}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-purple-900/60 to-indigo-900/60 border border-purple-500/20 text-purple-200 hover:text-white rounded-full text-xs font-bold transition-all active:scale-95 shadow-sm hover:shadow-purple-500/5"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
+            <span>Ver nota de Octavos</span>
+          </button>
+        </motion.div>
+      )}
 
       {/* PERSONAL STATUS CARD — Visible for logged-in users */}
       {profile && myStats && (

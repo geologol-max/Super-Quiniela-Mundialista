@@ -641,7 +641,18 @@ export function calculateAllKnockoutPointsForUser(
   ];
 
   phases.forEach(phase => {
-    const realMatchesInPhase = dbMatches.filter(m => phase.matchIds.includes(m.id) && m.status === 'finished');
+    const realMatchesInPhase = dbMatches.filter(m => 
+      m.status === 'finished' && 
+      (phase.matchIds.includes(m.id) || 
+       (m.group && (
+         m.group.toLowerCase().trim() === phase.name.toLowerCase().trim() ||
+         (phase.name === 'semis_final' && (
+           m.group.toLowerCase().includes('semi') || 
+           m.group.toLowerCase().includes('final') || 
+           m.group.toLowerCase().includes('tercer')
+         ))
+       )))
+    );
 
     // Get all user predictions for this phase
     const predsInPhase: { matchId: string; pred: Prediction; predTeamA: string; predTeamB: string }[] = [];

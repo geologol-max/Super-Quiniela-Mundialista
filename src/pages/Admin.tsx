@@ -257,9 +257,13 @@ export function Admin() {
     fetchMatches();
   };
 
-  const finalizeMatch = async (matchId: string, scoreA: number, scoreB: number) => {
+  const finalizeMatch = async (matchId: string, scoreA: number, scoreB: number, winnerId?: 'A' | 'B' | null) => {
     const matchRef = doc(db, 'matches', matchId);
-    await updateDoc(matchRef, { scoreA, scoreB, status: 'finished' });
+    const updateData: Record<string, any> = { scoreA, scoreB, status: 'finished' };
+    if (winnerId !== undefined) {
+      updateData.winnerId = winnerId;
+    }
+    await updateDoc(matchRef, updateData);
 
     // Single pass: recalculateLeaderboard internally calls updateAllPredictionsPointsInDb
     // This avoids the race condition of double-calculating points
@@ -557,7 +561,7 @@ export function Admin() {
             matchId: m.id,
             scoreA: m.scoreA,
             scoreB: m.scoreB,
-            winnerId: m.scoreA > m.scoreB ? 'A' : (m.scoreA < m.scoreB ? 'B' : null)
+            winnerId: m.scoreA > m.scoreB ? 'A' : (m.scoreA < m.scoreB ? 'B' : (m as any).winnerId || null)
           };
         }
       });
@@ -1054,63 +1058,168 @@ export function Admin() {
                     })()}
                   </div>
 
-                  {m.status === 'scheduled' ? (
-                    <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-100 italic">
-                      <input type="number" placeholder="Goles Local" id={`scoreA_${m.id}`} className="w-16 p-2 border-none bg-transparent text-center font-black focus:outline-none" />
-                      <span className="text-slate-300">-</span>
-                      <input type="number" placeholder="Goles Vis." id={`scoreB_${m.id}`} className="w-16 p-2 border-none bg-transparent text-center font-black focus:outline-none" />
-                      <button 
-                        onClick={() => {
-                          const a = (document.getElementById(`scoreA_${m.id}`) as HTMLInputElement).value;
-                          const b = (document.getElementById(`scoreB_${m.id}`) as HTMLInputElement).value;
-                          if (a !== "" && b !== "") finalizeMatch(m.id, parseInt(a), parseInt(b));
-                        }}
-                        className="ml-2 px-4 py-2 bg-green-600 text-white rounded-lg text-xs font-bold uppercase tracking-wider"
-                      >
-                        Finalizar
-                      </button>
-                    </div>
-                  ) : editingMatchId === m.id ? (
-                    <div className="flex items-center gap-2 bg-amber-50 p-2 rounded-xl border border-amber-100 italic text-amber-900">
-                      <input type="number" defaultValue={m.scoreA} id={`scoreA_${m.id}`} className="w-16 p-2 border-none bg-transparent text-center font-black focus:outline-none" />
-                      <span className="text-amber-300">-</span>
-                      <input type="number" defaultValue={m.scoreB} id={`scoreB_${m.id}`} className="w-16 p-2 border-none bg-transparent text-center font-black focus:outline-none" />
-                      <button 
-                        onClick={() => {
-                          const a = (document.getElementById(`scoreA_${m.id}`) as HTMLInputElement).value;
-                          const b = (document.getElementById(`scoreB_${m.id}`) as HTMLInputElement).value;
-                          if (a !== "" && b !== "") {
-                            finalizeMatch(m.id, parseInt(a), parseInt(b));
-                            setEditingMatchId(null);
-                          }
-                        }}
-                        className="ml-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold uppercase tracking-wider"
-                      >
-                        Guardar
-                      </button>
-                      <button 
-                        onClick={() => setEditingMatchId(null)}
-                        className="ml-1 px-3 py-2 bg-slate-200 text-slate-700 rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-slate-300"
-                      >
-                        X
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-3 bg-green-50 text-green-700 px-4 py-2 rounded-xl font-black text-xl border border-green-100">
-                        <span>{m.scoreA}</span>
-                        <span className="opacity-30">-</span>
-                        <span>{m.scoreB}</span>
-                        <CheckCircle className="w-5 h-5" />
+                  {(() => {
+                    const isKo = m.id.startsWith('ko_') || ['dieciseisavos', 'octavos', 'cuartos', 'semifinales', 'tercer_lugar', 'final', 'playoffs', 'eliminatoria'].includes((m.group || '').toLowerCase().trim());
+                    
+                    return editingMatchId === m.id && m.status === 'scheduled' ? (
+                      <div className="flex flex-col gap-3 bg-amber-50 p-4 rounded-xl border border-amber-100 text-amber-900 w-full lg:w-auto">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[9px] font-bold uppercase opacity-60">Local</label>
+                            <input type="text" defaultValue={m.teamA} id={`edit_teamA_${m.id}`} className="w-full p-1.5 border rounded-lg text-xs font-bold bg-white" />
+                          </div>
+                          <div>
+                            <label className="text-[9px] font-bold uppercase opacity-60">Visitante</label>
+                            <input type="text" defaultValue={m.teamB} id={`edit_teamB_${m.id}`} className="w-full p-1.5 border rounded-lg text-xs font-bold bg-white" />
+                          </div>
+                          <div>
+                            <label className="text-[9px] font-bold uppercase opacity-60">Fase / Grupo</label>
+                            <input type="text" defaultValue={m.group} id={`edit_group_${m.id}`} className="w-full p-1.5 border rounded-lg text-xs font-bold bg-white" />
+                          </div>
+                          <div>
+                            <label className="text-[9px] font-bold uppercase opacity-60">Fecha</label>
+                            <input type="datetime-local" defaultValue={m.date ? new Date(new Date(m.date).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ""} id={`edit_date_${m.id}`} className="w-full p-1.5 border rounded-lg text-xs font-bold bg-white" />
+                          </div>
+                        </div>
+                        <div className="flex gap-2 justify-end mt-2">
+                          <button 
+                            onClick={async () => {
+                              const tA = (document.getElementById(`edit_teamA_${m.id}`) as HTMLInputElement).value.trim();
+                              const tB = (document.getElementById(`edit_teamB_${m.id}`) as HTMLInputElement).value.trim();
+                              const grp = (document.getElementById(`edit_group_${m.id}`) as HTMLInputElement).value.trim();
+                              const dt = (document.getElementById(`edit_date_${m.id}`) as HTMLInputElement).value;
+                              
+                              if (!tA || !tB || !grp || !dt) {
+                                alert("Todos los campos son obligatorios.");
+                                return;
+                              }
+                              
+                              try {
+                                const matchRef = doc(db, 'matches', m.id);
+                                await updateDoc(matchRef, {
+                                  teamA: tA,
+                                  teamB: tB,
+                                  group: grp,
+                                  date: new Date(dt).toISOString()
+                                });
+                                setEditingMatchId(null);
+                                fetchMatches();
+                              } catch (err: any) {
+                                alert("Error al guardar cambios: " + err.message);
+                              }
+                            }}
+                            className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-indigo-700 transition"
+                          >
+                            Guardar
+                          </button>
+                          <button 
+                            onClick={() => setEditingMatchId(null)}
+                            className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-slate-300 transition"
+                          >
+                            X
+                          </button>
+                        </div>
                       </div>
-                      <button 
-                        onClick={() => setEditingMatchId(m.id)}
-                        className="p-2 hover:bg-slate-100 rounded-xl transition text-slate-500 hover:text-slate-800"
-                        title="Corregir resultado"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button 
+                    ) : m.status === 'scheduled' ? (
+                      <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-100 italic flex-wrap">
+                        <input type="number" placeholder="Goles Local" id={`scoreA_${m.id}`} className="w-16 p-2 border-none bg-transparent text-center font-black focus:outline-none" />
+                        <span className="text-slate-300">-</span>
+                        <input type="number" placeholder="Goles Vis." id={`scoreB_${m.id}`} className="w-16 p-2 border-none bg-transparent text-center font-black focus:outline-none" />
+                        {isKo && (
+                          <select id={`winnerId_${m.id}`} className="p-2 border border-slate-200 rounded-lg text-xs font-bold bg-white focus:outline-none">
+                            <option value="">Ganador Penaltis...</option>
+                            <option value="A">{m.teamA}</option>
+                            <option value="B">{m.teamB}</option>
+                          </select>
+                        )}
+                        <button 
+                          onClick={() => {
+                            const a = (document.getElementById(`scoreA_${m.id}`) as HTMLInputElement).value;
+                            const b = (document.getElementById(`scoreB_${m.id}`) as HTMLInputElement).value;
+                            if (a !== "" && b !== "") {
+                              const scoreA = parseInt(a);
+                              const scoreB = parseInt(b);
+                              let wId: 'A' | 'B' | null = null;
+                              if (scoreA === scoreB && isKo) {
+                                const sel = (document.getElementById(`winnerId_${m.id}`) as HTMLSelectElement)?.value;
+                                if (sel !== 'A' && sel !== 'B') {
+                                  alert("Por favor, selecciona qué equipo avanzó por penales.");
+                                  return;
+                                }
+                                wId = sel as 'A' | 'B';
+                              }
+                              finalizeMatch(m.id, scoreA, scoreB, wId);
+                            }
+                          }}
+                          className="ml-2 px-4 py-2 bg-green-600 text-white rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-green-700 transition"
+                        >
+                          Finalizar
+                        </button>
+                      </div>
+                    ) : editingMatchId === m.id ? (
+                      <div className="flex items-center gap-2 bg-amber-50 p-2 rounded-xl border border-amber-100 italic text-amber-900 flex-wrap">
+                        <input type="number" defaultValue={m.scoreA} id={`scoreA_${m.id}`} className="w-16 p-2 border-none bg-transparent text-center font-black focus:outline-none" />
+                        <span className="text-amber-300">-</span>
+                        <input type="number" defaultValue={m.scoreB} id={`scoreB_${m.id}`} className="w-16 p-2 border-none bg-transparent text-center font-black focus:outline-none" />
+                        {isKo && (
+                          <select id={`winnerId_${m.id}`} defaultValue={(m as any).winnerId || ""} className="p-2 border border-slate-200 rounded-lg text-xs font-bold bg-white focus:outline-none">
+                            <option value="">Ganador Penaltis...</option>
+                            <option value="A">{m.teamA}</option>
+                            <option value="B">{m.teamB}</option>
+                          </select>
+                        )}
+                        <button 
+                          onClick={() => {
+                            const a = (document.getElementById(`scoreA_${m.id}`) as HTMLInputElement).value;
+                            const b = (document.getElementById(`scoreB_${m.id}`) as HTMLInputElement).value;
+                            if (a !== "" && b !== "") {
+                              const scoreA = parseInt(a);
+                              const scoreB = parseInt(b);
+                              let wId: 'A' | 'B' | null = null;
+                              if (scoreA === scoreB && isKo) {
+                                const sel = (document.getElementById(`winnerId_${m.id}`) as HTMLSelectElement)?.value;
+                                if (sel !== 'A' && sel !== 'B') {
+                                  alert("Por favor, selecciona qué equipo avanzó por penales.");
+                                  return;
+                                }
+                                wId = sel as 'A' | 'B';
+                              }
+                              finalizeMatch(m.id, scoreA, scoreB, wId);
+                              setEditingMatchId(null);
+                            }
+                          }}
+                          className="ml-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold uppercase tracking-wider"
+                        >
+                          Guardar
+                        </button>
+                        <button 
+                          onClick={() => setEditingMatchId(null)}
+                          className="ml-1 px-3 py-2 bg-slate-200 text-slate-700 rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-slate-300"
+                        >
+                          X
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <div className="flex items-center gap-3 bg-green-50 text-green-700 px-4 py-2 rounded-xl font-black text-xl border border-green-100">
+                          <span>{m.scoreA}</span>
+                          <span className="opacity-30">-</span>
+                          <span>{m.scoreB}</span>
+                          <CheckCircle className="w-5 h-5" />
+                        </div>
+                        {isKo && (m as any).winnerId && (
+                          <span className="px-2.5 py-1.5 bg-indigo-50 text-indigo-700 rounded-xl text-xs font-bold border border-indigo-100">
+                            Avanzó: {(m as any).winnerId === 'A' ? m.teamA : m.teamB} (P)
+                          </span>
+                        )}
+                        <button 
+                          onClick={() => setEditingMatchId(m.id)}
+                          className="p-2 hover:bg-slate-100 rounded-xl transition text-slate-500 hover:text-slate-800"
+                          title="Corregir resultado"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button 
                         onClick={() => {
                           if (confirm(`¿Estás seguro de restablecer el partido ${m.teamA} vs ${m.teamB} a programado? Se borrará el marcador oficial y se recalcularán los puntos de los pronósticos de todos los usuarios.`)) {
                             resetMatch(m.id);
@@ -1122,6 +1231,16 @@ export function Admin() {
                         <RefreshCw className="w-4 h-4" />
                       </button>
                     </div>
+                  );
+                })()}
+                  {m.status === 'scheduled' && editingMatchId !== m.id && (
+                    <button 
+                      onClick={() => setEditingMatchId(m.id)}
+                      className="p-3 text-slate-400 hover:bg-slate-50 hover:text-slate-600 rounded-xl transition animate-pulse"
+                      title="Editar detalles del encuentro"
+                    >
+                      <Edit2 className="w-5 h-5" />
+                    </button>
                   )}
                   <button onClick={() => handleDeleteMatch(m.id)} className="p-3 text-red-400 hover:bg-red-50 hover:text-red-600 rounded-xl transition">
                     <Trash2 className="w-5 h-5" />
