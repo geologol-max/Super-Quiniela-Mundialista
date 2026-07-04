@@ -641,18 +641,29 @@ export function calculateAllKnockoutPointsForUser(
   ];
 
   phases.forEach(phase => {
-    const realMatchesInPhase = dbMatches.filter(m => 
-      m.status === 'finished' && 
-      (phase.matchIds.includes(m.id) || 
-       (m.group && (
-         m.group.toLowerCase().trim() === phase.name.toLowerCase().trim() ||
-         (phase.name === 'semis_final' && (
-           m.group.toLowerCase().includes('semi') || 
-           m.group.toLowerCase().includes('final') || 
-           m.group.toLowerCase().includes('tercer')
-         ))
-       )))
-    );
+    const realMatchesInPhase = dbMatches.filter(m => {
+      if (m.status !== 'finished') return false;
+      if (phase.matchIds.includes(m.id)) return true;
+      if (!m.group) return false;
+      
+      const g = m.group.toLowerCase().trim();
+      const p = phase.name.toLowerCase().trim();
+      
+      if (g === p) return true;
+      if (p === 'dieciseisavos') {
+        return g.includes('dieciseis') || g.includes('diesiseis') || g.includes('16');
+      }
+      if (p === 'octavos') {
+        return g.includes('octavo') || g.includes('8');
+      }
+      if (p === 'cuartos') {
+        return g.includes('cuarto') || g.includes('4');
+      }
+      if (p === 'semis_final') {
+        return g.includes('semi') || g.includes('final') || g.includes('tercer');
+      }
+      return false;
+    });
 
     // Get all user predictions for this phase
     const predsInPhase: { matchId: string; pred: Prediction; predTeamA: string; predTeamB: string }[] = [];

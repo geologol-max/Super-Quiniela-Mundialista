@@ -661,6 +661,44 @@ export function Admin() {
     }
   };
 
+  const seedSpecificOctavos = async () => {
+    setIsSeeding(true);
+    try {
+      const batch = writeBatch(db);
+      
+      const specificMatches = [
+        { id: 'ko_89', teamA: 'Canadá', teamB: 'Marruecos', date: '2026-07-04T13:03:00Z', group: 'Octavos de Final' },
+        { id: 'ko_90', teamA: 'Paraguay', teamB: 'Francia', date: '2026-07-04T17:00:00Z', group: 'Octavos de Final' },
+        { id: 'ko_91', teamA: 'Brasil', teamB: 'Noruega', date: '2026-07-05T16:00:00Z', group: 'Octavos de Final' },
+        { id: 'ko_92', teamA: 'México', teamB: 'Inglaterra', date: '2026-07-05T20:00:00Z', group: 'Octavos de Final' },
+        { id: 'ko_93', teamA: 'Portugal', teamB: 'España', date: '2026-07-06T15:00:00Z', group: 'Octavos de Final' },
+        { id: 'ko_94', teamA: 'Estados Unidos', teamB: 'Bélgica', date: '2026-07-06T20:08:00Z', group: 'Octavos de Final' },
+        { id: 'ko_95', teamA: 'Argentina', teamB: 'Egipto', date: '2026-07-07T12:00:00Z', group: 'Octavos de Final' },
+        { id: 'ko_96', teamA: 'Suiza', teamB: 'Colombia', date: '2026-07-07T16:00:00Z', group: 'Octavos de Final' }
+      ];
+
+      specificMatches.forEach(m => {
+        const docRef = doc(db, 'matches', m.id);
+        batch.set(docRef, {
+          teamA: m.teamA,
+          teamB: m.teamB,
+          date: m.date,
+          group: m.group,
+          status: 'scheduled'
+        }, { merge: true });
+      });
+
+      await batch.commit();
+      fetchMatches();
+      alert('¡Se han sembrado los 8 partidos oficiales de Octavos de Final con éxito!');
+    } catch (e) {
+      console.error(e);
+      alert('Error al sembrar octavos: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setIsSeeding(false);
+    }
+  };
+
   return (
     <div className="space-y-10 pb-20">
       <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -701,6 +739,15 @@ export function Admin() {
           >
             <Trophy className="w-4 h-4" />
             Sembrar Dieciseisavos Oficiales
+          </button>
+          <button 
+            onClick={seedSpecificOctavos}
+            disabled={isSeeding}
+            className="flex items-center gap-2 px-5 py-3 bg-amber-600 text-white rounded-xl shadow-lg shadow-amber-200 hover:bg-amber-700 disabled:opacity-50 transition font-bold"
+            title="Sembrar los 8 partidos oficiales de octavos de final"
+          >
+            <Trophy className="w-4 h-4" />
+            Sembrar Octavos Oficiales
           </button>
         </div>
       </header>
@@ -1057,9 +1104,13 @@ export function Admin() {
                       );
                     })()}
                   </div>
-
                   {(() => {
-                    const isKo = m.id.startsWith('ko_') || ['dieciseisavos', 'octavos', 'cuartos', 'semifinales', 'tercer_lugar', 'final', 'playoffs', 'eliminatoria'].includes((m.group || '').toLowerCase().trim());
+                    const isKo = m.id.startsWith('ko_') || (() => {
+                      const g = (m.group || '').toLowerCase().trim();
+                      return g.includes('dieciseis') || g.includes('diesiseis') || g.includes('octavo') || 
+                             g.includes('cuarto') || g.includes('semi') || g.includes('final') || 
+                             g.includes('tercer') || g.includes('playoff') || g.includes('eliminatoria');
+                    })();
                     
                     return editingMatchId === m.id && m.status === 'scheduled' ? (
                       <div className="flex flex-col gap-3 bg-amber-50 p-4 rounded-xl border border-amber-100 text-amber-900 w-full lg:w-auto">
