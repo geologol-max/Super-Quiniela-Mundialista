@@ -253,7 +253,7 @@ export const KNOCKOUT_MATCHES_CONFIG: KnockoutMatchConfig[] = [
     label: 'Cuartos - P97',
     dateStr: '09 de Julio',
     timeStr: '16:00',
-    stadium: 'Gillette Stadium, Boston',
+    stadium: 'Estadio Boston, Boston',
     teamASource: { type: 'match_winner', matchId: 'ko_89' },
     teamBSource: { type: 'match_winner', matchId: 'ko_90' }
   },
@@ -261,9 +261,9 @@ export const KNOCKOUT_MATCHES_CONFIG: KnockoutMatchConfig[] = [
     id: 'ko_98',
     phase: 'cuartos',
     label: 'Cuartos - P98',
-    dateStr: '09 de Julio',
-    timeStr: '20:00',
-    stadium: 'Mercedes-Benz Stadium, Atlanta',
+    dateStr: '11 de Julio',
+    timeStr: '21:00',
+    stadium: 'Estadio Kansas City, Kansas City',
     teamASource: { type: 'match_winner', matchId: 'ko_91' },
     teamBSource: { type: 'match_winner', matchId: 'ko_92' }
   },
@@ -271,9 +271,9 @@ export const KNOCKOUT_MATCHES_CONFIG: KnockoutMatchConfig[] = [
     id: 'ko_99',
     phase: 'cuartos',
     label: 'Cuartos - P99',
-    dateStr: '10 de Julio',
-    timeStr: '20:00',
-    stadium: 'Hard Rock Stadium, Miami',
+    dateStr: '11 de Julio',
+    timeStr: '17:00',
+    stadium: 'Estadio Miami, Miami',
     teamASource: { type: 'match_winner', matchId: 'ko_93' },
     teamBSource: { type: 'match_winner', matchId: 'ko_94' }
   },
@@ -282,8 +282,8 @@ export const KNOCKOUT_MATCHES_CONFIG: KnockoutMatchConfig[] = [
     phase: 'cuartos',
     label: 'Cuartos - P100',
     dateStr: '10 de Julio',
-    timeStr: '16:00',
-    stadium: 'SoFi Stadium, Los Ángeles',
+    timeStr: '15:00',
+    stadium: 'Estadio Los Angeles, Los Ángeles',
     teamASource: { type: 'match_winner', matchId: 'ko_95' },
     teamBSource: { type: 'match_winner', matchId: 'ko_96' }
   },
@@ -294,20 +294,20 @@ export const KNOCKOUT_MATCHES_CONFIG: KnockoutMatchConfig[] = [
     phase: 'semifinales',
     label: 'Semifinal - P101',
     dateStr: '14 de Julio',
-    timeStr: '20:00',
-    stadium: 'AT&T Stadium, Dallas',
+    timeStr: '15:00',
+    stadium: 'Estadio Dallas, Dallas',
     teamASource: { type: 'match_winner', matchId: 'ko_97' },
-    teamBSource: { type: 'match_winner', matchId: 'ko_98' }
+    teamBSource: { type: 'match_winner', matchId: 'ko_100' }
   },
   {
     id: 'ko_102',
     phase: 'semifinales',
     label: 'Semifinal - P102',
     dateStr: '15 de Julio',
-    timeStr: '20:00',
-    stadium: 'Mercedes-Benz Stadium, Atlanta',
+    timeStr: '15:00',
+    stadium: 'Estadio Atlanta, Atlanta',
     teamASource: { type: 'match_winner', matchId: 'ko_99' },
-    teamBSource: { type: 'match_winner', matchId: 'ko_100' }
+    teamBSource: { type: 'match_winner', matchId: 'ko_98' }
   },
 
   // Tercer Lugar
@@ -633,36 +633,42 @@ export function calculateAllKnockoutPointsForUser(
   const resolvedBracket = resolveUserPredictionsBracket(userPredsMap, dbMatches);
   const pointsMap: Record<string, number> = {};
 
+  // -------------------------------------------------------------------------
+  // PHASE DEFINITIONS: Each phase is independent to prevent cross-phase point
+  // contamination (e.g., Final/3rd Place cannot receive points before they play).
+  // ko_103 = Tercer Lugar (3rd Place), ko_104 = Gran Final — each in own phase.
+  // -------------------------------------------------------------------------
   const phases = [
     { name: 'dieciseisavos', matchIds: ['ko_73', 'ko_74', 'ko_75', 'ko_76', 'ko_77', 'ko_78', 'ko_79', 'ko_80', 'ko_81', 'ko_82', 'ko_83', 'ko_84', 'ko_85', 'ko_86', 'ko_87', 'ko_88'] },
     { name: 'octavos', matchIds: ['ko_89', 'ko_90', 'ko_91', 'ko_92', 'ko_93', 'ko_94', 'ko_95', 'ko_96'] },
     { name: 'cuartos', matchIds: ['ko_97', 'ko_98', 'ko_99', 'ko_100'] },
-    { name: 'semis_final', matchIds: ['ko_101', 'ko_102', 'ko_103', 'ko_104'] }
+    { name: 'semifinales', matchIds: ['ko_101', 'ko_102'] },
+    { name: 'tercer_lugar', matchIds: ['ko_103'] },
+    { name: 'final', matchIds: ['ko_104'] }
   ];
 
+  // Exact group name keywords for each phase — avoids substring collisions
+  // (e.g., "Octavos de Final" must NOT match the 'final' phase)
+  const PHASE_GROUP_KEYWORDS: Record<string, string[]> = {
+    'dieciseisavos': ['dieciseisavos', 'dieciseis', 'diesiseis', '16avos', '16'],
+    'octavos': ['octavos', 'octavos de final'],
+    'cuartos': ['cuartos', 'cuartos de final'],
+    'semifinales': ['semifinales', 'semifinal'],
+    'tercer_lugar': ['tercer lugar', 'tercer_lugar', 'tercero'],
+    'final': ['final', 'gran final']
+  };
+
   phases.forEach(phase => {
+    const phaseKeywords = PHASE_GROUP_KEYWORDS[phase.name] || [];
+
     const realMatchesInPhase = dbMatches.filter(m => {
       if (m.status !== 'finished') return false;
+      // Always match by explicit match ID first
       if (phase.matchIds.includes(m.id)) return true;
       if (!m.group) return false;
-      
+      // Use exact keyword matching (no substring collisions)
       const g = m.group.toLowerCase().trim();
-      const p = phase.name.toLowerCase().trim();
-      
-      if (g === p) return true;
-      if (p === 'dieciseisavos') {
-        return g.includes('dieciseis') || g.includes('diesiseis') || g.includes('16');
-      }
-      if (p === 'octavos') {
-        return g.includes('octavo') || g.includes('8');
-      }
-      if (p === 'cuartos') {
-        return g.includes('cuarto') || g.includes('4');
-      }
-      if (p === 'semis_final') {
-        return g.includes('semi') || g.includes('final') || g.includes('tercer');
-      }
-      return false;
+      return phaseKeywords.some(kw => g === kw);
     });
 
     // Get all user predictions for this phase
@@ -681,12 +687,14 @@ export function calculateAllKnockoutPointsForUser(
     // Initialize all to 0
     phase.matchIds.forEach(mId => { pointsMap[mId] = 0; });
 
+    // Track matched prediction matchIds to avoid skipping valid 1-point predictions
+    const matchedPredMatchIds = new Set<string>();
     // Track matched real matches to avoid double-matching
     const matchedRealMatchIds = new Set<string>();
 
     // First pass: Exact matchup matching (same two teams)
     predsInPhase.forEach(p => {
-      const realMatch = realMatchesInPhase.find(r => 
+      const realMatch = realMatchesInPhase.find(r =>
         !matchedRealMatchIds.has(r.id) &&
         ((r.teamA.toLowerCase().trim() === p.predTeamA.toLowerCase().trim() && r.teamB.toLowerCase().trim() === p.predTeamB.toLowerCase().trim()) ||
          (r.teamA.toLowerCase().trim() === p.predTeamB.toLowerCase().trim() && r.teamB.toLowerCase().trim() === p.predTeamA.toLowerCase().trim()))
@@ -694,6 +702,8 @@ export function calculateAllKnockoutPointsForUser(
 
       if (realMatch) {
         matchedRealMatchIds.add(realMatch.id);
+        // Mark this prediction as handled in first pass regardless of points scored
+        matchedPredMatchIds.add(p.matchId);
         const pts = calculateKnockoutPoints(
           p.predTeamA,
           p.predTeamB,
@@ -708,31 +718,38 @@ export function calculateAllKnockoutPointsForUser(
       }
     });
 
-    // Second pass: Individual team evaluation for unmatched predictions
+    // Second pass: Individual team evaluation for predictions not matched in first pass
+    // FIX: Use matchedPredMatchIds Set (not pointsMap[id] > 0) to avoid skipping
+    // predictions that scored 1 point in the first pass but deserved re-evaluation.
     predsInPhase.forEach(p => {
-      if (pointsMap[p.matchId] > 0) return; // Already matched in first pass
+      if (matchedPredMatchIds.has(p.matchId)) return; // Already fully handled in first pass
 
       let pts = 0;
 
       // Evaluate Team A
-      const realMatchA = realMatchesInPhase.find(r => 
+      const realMatchA = realMatchesInPhase.find(r =>
         r.teamA.toLowerCase().trim() === p.predTeamA.toLowerCase().trim() ||
         r.teamB.toLowerCase().trim() === p.predTeamA.toLowerCase().trim()
       );
       if (realMatchA) {
         pts += 3; // +3 classification points
-        const userPredWinner = Number(p.pred.scoreA) > Number(p.pred.scoreB) ? p.predTeamA : (Number(p.pred.scoreB) > Number(p.pred.scoreA) ? p.predTeamB : (p.pred.winnerId === 'A' ? p.predTeamA : (p.pred.winnerId === 'B' ? p.predTeamB : null)));
+        const userPredWinner = Number(p.pred.scoreA) > Number(p.pred.scoreB)
+          ? p.predTeamA
+          : (Number(p.pred.scoreB) > Number(p.pred.scoreA)
+            ? p.predTeamB
+            : (p.pred.winnerId === 'A' ? p.predTeamA : (p.pred.winnerId === 'B' ? p.predTeamB : null)));
         if (userPredWinner && userPredWinner.toLowerCase().trim() === p.predTeamA.toLowerCase().trim()) {
-          const realWinner = realMatchA.scoreA! > realMatchA.scoreB! ? realMatchA.teamA : (realMatchA.scoreB! > realMatchA.scoreA! ? realMatchA.teamB : (realMatchA as any).winnerId === 'A' ? realMatchA.teamA : (realMatchA as any).winnerId === 'B' ? realMatchA.teamB : null);
+          const realWinner = realMatchA.scoreA! > realMatchA.scoreB!
+            ? realMatchA.teamA
+            : (realMatchA.scoreB! > realMatchA.scoreA!
+              ? realMatchA.teamB
+              : ((realMatchA as any).winnerId === 'A' ? realMatchA.teamA : ((realMatchA as any).winnerId === 'B' ? realMatchA.teamB : null)));
           if (realWinner && realWinner.toLowerCase().trim() === p.predTeamA.toLowerCase().trim()) {
             pts += 5; // +5 outcome points
-
-            // Compare score
             const predGoalsWinner = Number(p.pred.scoreA);
             const predGoalsOpp = Number(p.pred.scoreB);
             const realGoalsWinner = realMatchA.teamA.toLowerCase().trim() === p.predTeamA.toLowerCase().trim() ? realMatchA.scoreA! : realMatchA.scoreB!;
             const realGoalsOpp = realMatchA.teamA.toLowerCase().trim() === p.predTeamA.toLowerCase().trim() ? realMatchA.scoreB! : realMatchA.scoreA!;
-
             if (predGoalsWinner === realGoalsWinner && predGoalsOpp === realGoalsOpp) {
               pts += 3; // exact score
             } else if (predGoalsWinner === realGoalsWinner || predGoalsOpp === realGoalsOpp) {
@@ -743,24 +760,29 @@ export function calculateAllKnockoutPointsForUser(
       }
 
       // Evaluate Team B
-      const realMatchB = realMatchesInPhase.find(r => 
+      const realMatchB = realMatchesInPhase.find(r =>
         r.teamA.toLowerCase().trim() === p.predTeamB.toLowerCase().trim() ||
         r.teamB.toLowerCase().trim() === p.predTeamB.toLowerCase().trim()
       );
       if (realMatchB) {
         pts += 3; // +3 classification points
-        const userPredWinner = Number(p.pred.scoreA) > Number(p.pred.scoreB) ? p.predTeamA : (Number(p.pred.scoreB) > Number(p.pred.scoreA) ? p.predTeamB : (p.pred.winnerId === 'A' ? p.predTeamA : (p.pred.winnerId === 'B' ? p.predTeamB : null)));
+        const userPredWinner = Number(p.pred.scoreA) > Number(p.pred.scoreB)
+          ? p.predTeamA
+          : (Number(p.pred.scoreB) > Number(p.pred.scoreA)
+            ? p.predTeamB
+            : (p.pred.winnerId === 'A' ? p.predTeamA : (p.pred.winnerId === 'B' ? p.predTeamB : null)));
         if (userPredWinner && userPredWinner.toLowerCase().trim() === p.predTeamB.toLowerCase().trim()) {
-          const realWinner = realMatchB.scoreA! > realMatchB.scoreB! ? realMatchB.teamA : (realMatchB.scoreB! > realMatchB.scoreA! ? realMatchB.teamB : (realMatchB as any).winnerId === 'A' ? realMatchB.teamA : (realMatchB as any).winnerId === 'B' ? realMatchB.teamB : null);
+          const realWinner = realMatchB.scoreA! > realMatchB.scoreB!
+            ? realMatchB.teamA
+            : (realMatchB.scoreB! > realMatchB.scoreA!
+              ? realMatchB.teamB
+              : ((realMatchB as any).winnerId === 'A' ? realMatchB.teamA : ((realMatchB as any).winnerId === 'B' ? realMatchB.teamB : null)));
           if (realWinner && realWinner.toLowerCase().trim() === p.predTeamB.toLowerCase().trim()) {
             pts += 5; // +5 outcome points
-
-            // Compare score
             const predGoalsWinner = Number(p.pred.scoreB);
             const predGoalsOpp = Number(p.pred.scoreA);
             const realGoalsWinner = realMatchB.teamA.toLowerCase().trim() === p.predTeamB.toLowerCase().trim() ? realMatchB.scoreA! : realMatchB.scoreB!;
             const realGoalsOpp = realMatchB.teamA.toLowerCase().trim() === p.predTeamB.toLowerCase().trim() ? realMatchB.scoreB! : realMatchB.scoreA!;
-
             if (predGoalsWinner === realGoalsWinner && predGoalsOpp === realGoalsOpp) {
               pts += 3; // exact score
             } else if (predGoalsWinner === realGoalsWinner || predGoalsOpp === realGoalsOpp) {

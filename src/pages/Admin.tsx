@@ -576,14 +576,12 @@ export function Admin() {
 
         const matchDocRef = doc(db, 'matches', cfg.id);
 
-        // Check if this match already exists and is finished — don't revert its status
+        // Check if this match already exists and is finished
         const existingMatch = dbMatches.find(m => m.id === cfg.id);
         const isAlreadyFinished = existingMatch?.status === 'finished';
 
         const matchData: Record<string, any> = {
-          teamA: teamAObj.name,
-          teamB: teamBObj.name,
-          group: cfg.phase === 'dieciseisavos' ? 'Dieciseisavos' : 
+          group: cfg.phase === 'dieciseisavos' ? 'Dieciseisavos' :
                  cfg.phase === 'octavos' ? 'Octavos' :
                  cfg.phase === 'cuartos' ? 'Cuartos' :
                  cfg.phase === 'semifinales' ? 'Semifinales' :
@@ -591,8 +589,11 @@ export function Admin() {
           date: parseKnockoutDate(cfg.dateStr, cfg.timeStr),
         };
 
-        // Only set status to 'scheduled' for new or non-finalized matches
+        // PROTECTION: Only update teamA/teamB for matches that are NOT yet finalized.
+        // This prevents accidental overwrite of real results already stored in Firestore.
         if (!isAlreadyFinished) {
+          matchData.teamA = teamAObj.name;
+          matchData.teamB = teamBObj.name;
           matchData.status = 'scheduled';
         }
 
@@ -699,6 +700,162 @@ export function Admin() {
     }
   };
 
+  const seedSpecificCuartos = async () => {
+    setIsSeeding(true);
+    try {
+      const batch = writeBatch(db);
+      
+      const specificMatches = [
+        { id: 'ko_97', teamA: 'Francia', teamB: 'Marruecos', date: '2026-07-09T16:00:00Z', group: 'Cuartos de Final' },
+        { id: 'ko_98', teamA: 'Argentina', teamB: 'Suiza', date: '2026-07-11T21:00:00Z', group: 'Cuartos de Final' },
+        { id: 'ko_99', teamA: 'Noruega', teamB: 'Inglaterra', date: '2026-07-11T17:00:00Z', group: 'Cuartos de Final' },
+        { id: 'ko_100', teamA: 'España', teamB: 'Bélgica', date: '2026-07-10T15:00:00Z', group: 'Cuartos de Final' }
+      ];
+
+      specificMatches.forEach(m => {
+        const docRef = doc(db, 'matches', m.id);
+        batch.set(docRef, {
+          teamA: m.teamA,
+          teamB: m.teamB,
+          date: m.date,
+          group: m.group,
+          status: 'scheduled'
+        }, { merge: true });
+      });
+
+      await batch.commit();
+      fetchMatches();
+      alert('¡Se han sembrado los 4 partidos oficiales de Cuartos de Final con éxito!');
+    } catch (e) {
+      console.error(e);
+      alert('Error al sembrar cuartos: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setIsSeeding(false);
+    }
+  };
+
+  const seedSpecificSemis = async () => {
+    setIsSeeding(true);
+    try {
+      const batch = writeBatch(db);
+      
+      const specificMatches = [
+        { id: 'ko_101', teamA: 'Francia', teamB: 'España', date: '2026-07-14T15:00:00Z', group: 'Semifinales' },
+        { id: 'ko_102', teamA: 'Inglaterra', teamB: 'Argentina', date: '2026-07-15T15:00:00Z', group: 'Semifinales' }
+      ];
+
+      specificMatches.forEach(m => {
+        const docRef = doc(db, 'matches', m.id);
+        batch.set(docRef, {
+          teamA: m.teamA,
+          teamB: m.teamB,
+          date: m.date,
+          group: m.group,
+          status: 'scheduled'
+        }, { merge: true });
+      });
+
+      await batch.commit();
+      fetchMatches();
+      alert('¡Se han sembrado los 2 partidos oficiales de Semifinales con éxito!');
+    } catch (e) {
+      console.error(e);
+      alert('Error al sembrar semifinales: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setIsSeeding(false);
+    }
+  };
+
+  // ============================================================
+  // FASE FINAL — Tercer Lugar y Gran Final (datos oficiales)
+  // Tercer Lugar: Francia vs Inglaterra — Sáb 18 Jul 2026, 17:00 UTC-4 (Miami)
+  // Gran Final:   España vs Argentina   — Dom 19 Jul 2026, 15:00 UTC-4 (NJ)
+  // ============================================================
+  const seedFinalPhaseMatches = async () => {
+    const confirmed = window.confirm(
+      '⚠️ SEMBRAR FASE FINAL\n\n' +
+      'Se van a registrar los siguientes partidos:\n' +
+      '• ko_103 | Tercer Lugar: Francia vs Inglaterra\n' +
+      '  Sáb 18 Jul 2026 | 17:00 | Hard Rock Stadium, Miami\n\n' +
+      '• ko_104 | Gran Final: España vs Argentina\n' +
+      '  Dom 19 Jul 2026 | 15:00 | MetLife Stadium, Nueva Jersey\n\n' +
+      'Los partidos ya finalizados NO serán modificados.\n' +
+      '¿Confirmas la siembra?'
+    );
+    if (!confirmed) return;
+
+    setIsSeeding(true);
+    try {
+      const matchesSnap = await getDocsFromServer(collection(db, 'matches'));
+      const dbMatchesCurrent = matchesSnap.docs.map(d => ({ id: d.id, ...d.data() } as Match));
+
+      const finalMatches = [
+        {
+          id: 'ko_103',
+          teamA: 'Francia',
+          teamB: 'Inglaterra',
+          // 18 Jul 2026 17:00 hora Miami (UTC-4) = 21:00 UTC
+          date: '2026-07-18T21:00:00Z',
+          group: 'Tercer Lugar',
+          label: 'Tercer Lugar'
+        },
+        {
+          id: 'ko_104',
+          teamA: 'España',
+          teamB: 'Argentina',
+          // 19 Jul 2026 15:00 hora Nueva Jersey (UTC-4) = 19:00 UTC
+          date: '2026-07-19T19:00:00Z',
+          group: 'Final',
+          label: 'Gran Final'
+        }
+      ];
+
+      const batch = writeBatch(db);
+      const skipped: string[] = [];
+
+      finalMatches.forEach(m => {
+        const existing = dbMatchesCurrent.find(e => e.id === m.id);
+        const isFinished = existing?.status === 'finished';
+
+        if (isFinished) {
+          // PROTECTION: Never overwrite a finalized match's teams or result
+          skipped.push(`${m.id} (${m.label}) — YA FINALIZADO, omitido`);
+          return;
+        }
+
+        const docRef = doc(db, 'matches', m.id);
+        batch.set(docRef, {
+          teamA: m.teamA,
+          teamB: m.teamB,
+          date: m.date,
+          group: m.group,
+          status: 'scheduled'
+        }, { merge: true });
+      });
+
+      await batch.commit();
+      fetchMatches();
+
+      const skippedMsg = skipped.length > 0
+        ? `\n\n⚠️ Los siguientes partidos fueron omitidos porque ya están finalizados:\n${skipped.join('\n')}`
+        : '';
+
+      alert(
+        '✅ Fase Final sembrada correctamente:\n\n' +
+        '• ko_103 | Tercer Lugar: Francia 🇫🇷 vs 🏴󠁧󠁢󠁥󠁮󠁧󠁿 Inglaterra\n' +
+        '  Sáb 18 Jul | 17:00 | Hard Rock Stadium, Miami\n\n' +
+        '• ko_104 | Gran Final: España 🇪🇸 vs 🇦🇷 Argentina\n' +
+        '  Dom 19 Jul | 15:00 | MetLife Stadium, Nueva Jersey' +
+        skippedMsg
+      );
+    } catch (e) {
+      console.error(e);
+      alert('Error al sembrar la Fase Final: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setIsSeeding(false);
+    }
+  };
+
   return (
     <div className="space-y-10 pb-20">
       <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -748,6 +905,33 @@ export function Admin() {
           >
             <Trophy className="w-4 h-4" />
             Sembrar Octavos Oficiales
+          </button>
+          <button 
+            onClick={seedSpecificCuartos}
+            disabled={isSeeding}
+            className="flex items-center gap-2 px-5 py-3 bg-rose-600 text-white rounded-xl shadow-lg shadow-rose-200 hover:bg-rose-700 disabled:opacity-50 transition font-bold"
+            title="Sembrar los 4 partidos oficiales de cuartos de final"
+          >
+            <Trophy className="w-4 h-4" />
+            Sembrar Cuartos Oficiales
+          </button>
+          <button 
+            onClick={seedSpecificSemis}
+            disabled={isSeeding}
+            className="flex items-center gap-2 px-5 py-3 bg-purple-600 text-white rounded-xl shadow-lg shadow-purple-200 hover:bg-purple-700 disabled:opacity-50 transition font-bold"
+            title="Sembrar los 2 partidos oficiales de semifinales"
+          >
+            <Trophy className="w-4 h-4" />
+            Sembrar Semifinales Oficiales
+          </button>
+          <button 
+            onClick={seedFinalPhaseMatches}
+            disabled={isSeeding}
+            className="flex items-center gap-2 px-5 py-3 bg-yellow-500 text-white rounded-xl shadow-lg shadow-yellow-300 hover:bg-yellow-600 disabled:opacity-50 transition font-bold border-2 border-yellow-400"
+            title="Sembrar Tercer Lugar (Francia vs Inglaterra) y Gran Final (España vs Argentina)"
+          >
+            <Trophy className="w-4 h-4 fill-white" />
+            🏆 Sembrar Fase Final (3er Lugar + Gran Final)
           </button>
         </div>
       </header>
