@@ -301,31 +301,22 @@ export function Dashboard() {
       };
 
       // Load all design assets (public assets)
-      const [imgBg, imgMascot, imgLogo, imgTrophy] = await Promise.all([
-        loadImage('/background.jpg').catch(() => null),
+      const [imgMascot, imgLogo] = await Promise.all([
         loadImage('/mascot.jpg').catch(() => null),
-        loadImage('/logo_2026.jpg').catch(() => null),
-        loadImage('/trophy.png').catch(() => null)
+        loadImage('/logo_2026.jpg').catch(() => null)
       ]);
 
-      // === BACKGROUND WATERMARK ===
-      if (imgBg) {
-        ctx.drawImage(imgBg, 0, 0, W, H);
-        ctx.fillStyle = 'rgba(6, 11, 20, 0.88)'; // Dark watermark overlay
-        ctx.fillRect(0, 0, W, H);
-      } else {
-        // Fallback gradient if background fails to load
-        const bgGrad = ctx.createLinearGradient(0, 0, W, H);
-        bgGrad.addColorStop(0, '#060b14');
-        bgGrad.addColorStop(0.5, '#0a1a2e');
-        bgGrad.addColorStop(1, '#060b14');
-        ctx.fillStyle = bgGrad;
-        ctx.fillRect(0, 0, W, H);
-      }
+      // === BACKGROUND (Programmatic dark sports stadium style) ===
+      const bgGrad = ctx.createLinearGradient(0, 0, W, H);
+      bgGrad.addColorStop(0, '#060b14');
+      bgGrad.addColorStop(0.5, '#0a1a2e');
+      bgGrad.addColorStop(1, '#060b14');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, W, H);
 
       // Pitch green glow (center-bottom)
       const pitchGlow = ctx.createRadialGradient(W / 2, H * 0.75, 0, W / 2, H * 0.75, 440);
-      pitchGlow.addColorStop(0, 'rgba(0, 110, 45, 0.25)');
+      pitchGlow.addColorStop(0, 'rgba(0, 110, 45, 0.22)');
       pitchGlow.addColorStop(1, 'rgba(0, 60, 20, 0)');
       ctx.fillStyle = pitchGlow;
       ctx.fillRect(0, 0, W, H);
@@ -336,6 +327,15 @@ export function Dashboard() {
       topGlow.addColorStop(1, 'rgba(15, 40, 130, 0)');
       ctx.fillStyle = topGlow;
       ctx.fillRect(0, 0, W, H);
+
+      // === FOOTBALL FIELD LINES (decorative) ===
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)'; // Subtle white field lines
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(0, H * 0.63); ctx.lineTo(W, H * 0.63); ctx.stroke();
+      ctx.beginPath(); ctx.arc(W / 2, H * 0.63, 175, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.rect(W * 0.23, H * 0.43, W * 0.54, H * 0.4); ctx.stroke();
+      ctx.restore();
 
       // === DOUBLE BORDER ===
       const PAD = 22;
@@ -507,17 +507,39 @@ export function Dashboard() {
         ctx.drawImage(mascotCanvas, PAD + 18, H - PAD - 123, 140, 105);
       }
 
-      // === TROPHY (bottom-right) ===
-      if (imgTrophy) {
-        const trophyCanvas = getTransparentCanvas(imgTrophy, 235);
-        ctx.drawImage(trophyCanvas, W - PAD - 168, H - PAD - 72, 150, 54);
-      }
-
-      // === TROPHY (bottom center) ===
-      if (imgTrophy) {
-        const trophyCanvas = getTransparentCanvas(imgTrophy, 235);
-        ctx.drawImage(trophyCanvas, (W - 180) / 2, 490, 180, 65);
-      }
+      // === DECORATIVE GOLD STARS (bottom center) ===
+      const drawGoldStar = (c: CanvasRenderingContext2D, cx: number, cy: number, spikes: number, outerRadius: number, innerRadius: number) => {
+        let rot = Math.PI / 2 * 3;
+        let sx = cx;
+        let sy = cy;
+        const step = Math.PI / spikes;
+        c.save();
+        c.beginPath();
+        c.moveTo(cx, cy - outerRadius);
+        for (let i = 0; i < spikes; i++) {
+          sx = cx + Math.cos(rot) * outerRadius;
+          sy = cy + Math.sin(rot) * outerRadius;
+          c.lineTo(sx, sy);
+          rot += step;
+          sx = cx + Math.cos(rot) * innerRadius;
+          sy = cy + Math.sin(rot) * innerRadius;
+          c.lineTo(sx, sy);
+          rot += step;
+        }
+        c.lineTo(cx, cy - outerRadius);
+        c.closePath();
+        c.lineWidth = 2;
+        c.strokeStyle = '#FFD700';
+        c.stroke();
+        c.fillStyle = 'rgba(255, 215, 0, 0.85)';
+        c.fill();
+        c.restore();
+      };
+      
+      // Draw 3 stars centered horizontally at y=515
+      drawGoldStar(ctx, W / 2 - 40, 515, 5, 14, 7); // Left star
+      drawGoldStar(ctx, W / 2, 510, 5, 20, 10);    // Middle star (larger)
+      drawGoldStar(ctx, W / 2 + 40, 515, 5, 14, 7); // Right star
 
       // === FOOTER ===
       ctx.font = '12px Arial';
