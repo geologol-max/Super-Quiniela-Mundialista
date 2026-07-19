@@ -207,19 +207,16 @@ export function Dashboard() {
     return idx >= 0 ? idx + 1 : 0;
   }, [profile, users]);
 
-  // Load certificate availability from Firestore settings (admin-controlled toggle)
+  // Load certificate availability from Firestore settings (admin-controlled toggle) via real-time listener
   useEffect(() => {
-    const loadCertSetting = async () => {
-      try {
-        const snap = await getDoc(doc(db, 'settings', 'general'));
-        if (snap.exists()) {
-          setCertificatesEnabled(snap.data().certificatesEnabled === true);
-        }
-      } catch (e) {
-        console.error('[Dashboard] Error loading cert setting:', e);
+    const unsub = onSnapshot(doc(db, 'matches', 'ko_104'), (snap) => {
+      if (snap.exists()) {
+        setCertificatesEnabled(snap.data().certificatesEnabled === true);
       }
-    };
-    loadCertSetting();
+    }, (e) => {
+      console.error('[Dashboard] Error listening to final match (ko_104):', e);
+    });
+    return () => unsub();
   }, []);
 
   const handleUpdateProfile = async () => {

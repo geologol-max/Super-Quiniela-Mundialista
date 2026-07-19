@@ -54,7 +54,7 @@ export function Admin() {
   useEffect(() => {
     const loadCertSetting = async () => {
       try {
-        const snap = await getDoc(doc(db, 'settings', 'general'));
+        const snap = await getDoc(doc(db, 'matches', 'ko_104'));
         if (snap.exists()) {
           setCertEnabled(snap.data().certificatesEnabled === true);
         }
@@ -70,7 +70,7 @@ export function Admin() {
     setTogglingCert(true);
     try {
       const newValue = !certEnabled;
-      await setDoc(doc(db, 'settings', 'general'), {
+      await setDoc(doc(db, 'matches', 'ko_104'), {
         certificatesEnabled: newValue
       }, { merge: true });
       setCertEnabled(newValue);
