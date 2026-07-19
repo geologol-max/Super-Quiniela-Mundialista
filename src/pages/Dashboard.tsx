@@ -246,7 +246,7 @@ export function Dashboard() {
   // Only available when the Gran Final (ko_104) is finished.
   // Top 3: gold / silver / bronze name color + special message.
   // ============================================================
-  const downloadCertificate = () => {
+  const downloadCertificate = async () => {
     if (!profile) return;
     setDownloadingCert(true);
     try {
@@ -261,36 +261,53 @@ export function Dashboard() {
       const ctx = canvas.getContext('2d');
       if (!ctx) throw new Error('Canvas not supported');
 
-      // === BACKGROUND ===
-      const bgGrad = ctx.createLinearGradient(0, 0, W, H);
-      bgGrad.addColorStop(0, '#060b14');
-      bgGrad.addColorStop(0.5, '#0a1a2e');
-      bgGrad.addColorStop(1, '#060b14');
-      ctx.fillStyle = bgGrad;
-      ctx.fillRect(0, 0, W, H);
+      // Helper to load image
+      const loadImage = (src: string): Promise<HTMLImageElement> => {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => resolve(img);
+          img.onerror = (e) => reject(e);
+          img.src = src;
+        });
+      };
+
+      // Load all design assets (public assets)
+      const [imgBg, imgMascot, imgLogo, imgTrophy] = await Promise.all([
+        loadImage('/background.jpg').catch(() => null),
+        loadImage('/mascot.jpg').catch(() => null),
+        loadImage('/logo_2026.jpg').catch(() => null),
+        loadImage('/trophy.png').catch(() => null)
+      ]);
+
+      // === BACKGROUND WATERMARK ===
+      if (imgBg) {
+        ctx.drawImage(imgBg, 0, 0, W, H);
+        ctx.fillStyle = 'rgba(6, 11, 20, 0.88)'; // Dark watermark overlay
+        ctx.fillRect(0, 0, W, H);
+      } else {
+        // Fallback gradient if background fails to load
+        const bgGrad = ctx.createLinearGradient(0, 0, W, H);
+        bgGrad.addColorStop(0, '#060b14');
+        bgGrad.addColorStop(0.5, '#0a1a2e');
+        bgGrad.addColorStop(1, '#060b14');
+        ctx.fillStyle = bgGrad;
+        ctx.fillRect(0, 0, W, H);
+      }
 
       // Pitch green glow (center-bottom)
       const pitchGlow = ctx.createRadialGradient(W / 2, H * 0.75, 0, W / 2, H * 0.75, 440);
-      pitchGlow.addColorStop(0, 'rgba(0, 110, 45, 0.30)');
+      pitchGlow.addColorStop(0, 'rgba(0, 110, 45, 0.25)');
       pitchGlow.addColorStop(1, 'rgba(0, 60, 20, 0)');
       ctx.fillStyle = pitchGlow;
       ctx.fillRect(0, 0, W, H);
 
       // Blue top glow
       const topGlow = ctx.createRadialGradient(W / 2, 0, 0, W / 2, 0, 380);
-      topGlow.addColorStop(0, 'rgba(15, 40, 130, 0.38)');
+      topGlow.addColorStop(0, 'rgba(15, 40, 130, 0.35)');
       topGlow.addColorStop(1, 'rgba(15, 40, 130, 0)');
       ctx.fillStyle = topGlow;
       ctx.fillRect(0, 0, W, H);
-
-      // === FOOTBALL FIELD LINES (decorative) ===
-      ctx.save();
-      ctx.strokeStyle = 'rgba(20, 140, 60, 0.07)';
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(0, H * 0.63); ctx.lineTo(W, H * 0.63); ctx.stroke();
-      ctx.beginPath(); ctx.arc(W / 2, H * 0.63, 175, 0, Math.PI * 2); ctx.stroke();
-      ctx.beginPath(); ctx.rect(W * 0.23, H * 0.43, W * 0.54, H * 0.4); ctx.stroke();
-      ctx.restore();
 
       // === DOUBLE BORDER ===
       const PAD = 22;
@@ -314,9 +331,54 @@ export function Dashboard() {
       ctx.textAlign = 'left';
       ctx.font = 'bold 13px Arial';
       ctx.fillStyle = '#FFD700';
-      ctx.fillText('FIFA WORLD CUP 2026', PAD + 18, 70);
+      ctx.fillText('FIFA WORLD CUP 2026', PAD + 80, 70); // Adjusted x to make space for the logo
       ctx.textAlign = 'right';
-      ctx.fillText('THE FINAL \u2022 MetLife Stadium, Nueva Jersey', W - PAD - 18, 70);
+      ctx.fillText('THE FINAL \u2022 MetLife Stadium, Nueva Jersey', W - PAD - 100, 70); // Adjusted x to make space for the ball
+
+      // === LOGO (top-left) ===
+      if (imgLogo) {
+        ctx.drawImage(imgLogo, PAD + 18, PAD + 18, 50, 97);
+      }
+
+      // === SOCCER BALL (top-right) ===
+      const drawSoccerBall = (c: CanvasRenderingContext2D, sx: number, sy: number, r: number) => {
+        c.save();
+        c.beginPath();
+        c.arc(sx, sy, r, 0, Math.PI * 2);
+        c.strokeStyle = '#FFD700';
+        c.lineWidth = 2.5;
+        c.stroke();
+        
+        // Pentagon in the center
+        const coords = [];
+        for (let i = 0; i < 5; i++) {
+          const angle = (i * 2 * Math.PI) / 5 - Math.PI / 2;
+          coords.push({
+            x: sx + Math.cos(angle) * (r * 0.45),
+            y: sy + Math.sin(angle) * (r * 0.45)
+          });
+        }
+        c.beginPath();
+        c.moveTo(coords[0].x, coords[0].y);
+        for (let i = 1; i < 5; i++) c.lineTo(coords[i].x, coords[i].y);
+        c.closePath();
+        c.fillStyle = 'rgba(255, 215, 0, 0.75)';
+        c.fill();
+        c.stroke();
+
+        // Lines to outer edge
+        for (let i = 0; i < 5; i++) {
+          const angle = (i * 2 * Math.PI) / 5 - Math.PI / 2;
+          const ex = sx + Math.cos(angle) * r;
+          const ey = sy + Math.sin(angle) * r;
+          c.beginPath();
+          c.moveTo(coords[i].x, coords[i].y);
+          c.lineTo(ex, ey);
+          c.stroke();
+        }
+        c.restore();
+      };
+      drawSoccerBall(ctx, W - PAD - 55, PAD + 55, 30);
 
       // === TITLE ===
       ctx.textAlign = 'center';
@@ -409,6 +471,21 @@ export function Dashboard() {
       } else {
         ctx.fillStyle = 'rgba(160, 200, 255, 0.65)';
         ctx.fillText('\u00a1Gracias por tu participacion en la Super Quiniela Mundialista 2026!', W / 2, 465);
+      }
+
+      // === MASCOT (bottom-left) ===
+      if (imgMascot) {
+        ctx.drawImage(imgMascot, PAD + 18, H - PAD - 123, 140, 105);
+      }
+
+      // === TROPHY (bottom-right) ===
+      if (imgTrophy) {
+        ctx.drawImage(imgTrophy, W - PAD - 168, H - PAD - 72, 150, 54);
+      }
+
+      // === TROPHY (bottom center) ===
+      if (imgTrophy) {
+        ctx.drawImage(imgTrophy, (W - 180) / 2, 490, 180, 65);
       }
 
       // === FOOTER ===
