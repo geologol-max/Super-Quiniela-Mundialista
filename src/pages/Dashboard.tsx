@@ -272,6 +272,34 @@ export function Dashboard() {
         });
       };
 
+      // Helper to remove white/near-white backgrounds from images (chroma keying)
+      const getTransparentCanvas = (img: HTMLImageElement, threshold = 230): HTMLCanvasElement | HTMLImageElement => {
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = img.width;
+        tempCanvas.height = img.height;
+        const tempCtx = tempCanvas.getContext('2d');
+        if (!tempCtx) return img;
+        tempCtx.drawImage(img, 0, 0);
+        try {
+          const imgData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+          const data = imgData.data;
+          for (let i = 0; i < data.length; i += 4) {
+            const r = data[i];
+            const g = data[i+1];
+            const b = data[i+2];
+            // If pixel is white or close to white, make it transparent
+            if (r > threshold && g > threshold && b > threshold) {
+              data[i+3] = 0;
+            }
+          }
+          tempCtx.putImageData(imgData, 0, 0);
+          return tempCanvas;
+        } catch (e) {
+          console.warn('Canvas image data reading blocked (cross-origin):', e);
+          return img;
+        }
+      };
+
       // Load all design assets (public assets)
       const [imgBg, imgMascot, imgLogo, imgTrophy] = await Promise.all([
         loadImage('/background.jpg').catch(() => null),
@@ -475,17 +503,20 @@ export function Dashboard() {
 
       // === MASCOT (bottom-left) ===
       if (imgMascot) {
-        ctx.drawImage(imgMascot, PAD + 18, H - PAD - 123, 140, 105);
+        const mascotCanvas = getTransparentCanvas(imgMascot, 235);
+        ctx.drawImage(mascotCanvas, PAD + 18, H - PAD - 123, 140, 105);
       }
 
       // === TROPHY (bottom-right) ===
       if (imgTrophy) {
-        ctx.drawImage(imgTrophy, W - PAD - 168, H - PAD - 72, 150, 54);
+        const trophyCanvas = getTransparentCanvas(imgTrophy, 235);
+        ctx.drawImage(trophyCanvas, W - PAD - 168, H - PAD - 72, 150, 54);
       }
 
       // === TROPHY (bottom center) ===
       if (imgTrophy) {
-        ctx.drawImage(imgTrophy, (W - 180) / 2, 490, 180, 65);
+        const trophyCanvas = getTransparentCanvas(imgTrophy, 235);
+        ctx.drawImage(trophyCanvas, (W - 180) / 2, 490, 180, 65);
       }
 
       // === FOOTER ===
