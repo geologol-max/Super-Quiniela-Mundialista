@@ -1,8 +1,8 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import { collection, onSnapshot, doc, setDoc, getDocs, getDocsFromServer } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, getDocs, getDocsFromServer, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { UserProfile } from '../types';
+import { UserProfile, Match } from '../types';
 import { Trophy, Medal, Smile, Image as ImageIcon, Check, Save, Sparkles, User, RefreshCw, AlertCircle, Users, BarChart2, Clock, Target, Zap, Wifi, WifiOff } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -26,6 +26,9 @@ export function Dashboard() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const { profile } = useAuth();
+  // Certificate availability — controlled by the admin via settings/general.certificatesEnabled
+  const [certificatesEnabled, setCertificatesEnabled] = useState(false);
+  const [downloadingCert, setDownloadingCert] = useState(false);
 
   // Force reload from server by incrementing refreshKey
   const handleForceRefresh = useCallback(() => {
@@ -40,16 +43,16 @@ export function Dashboard() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  const [showOctavosWelcome, setShowOctavosWelcome] = useState(() => {
+  const [showSemisWelcome, setShowSemisWelcome] = useState(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('hide_octavos_welcome') !== 'true';
+      return localStorage.getItem('hide_semis_welcome') !== 'true';
     }
     return true;
   });
 
   const handleDismissWelcome = () => {
-    localStorage.setItem('hide_octavos_welcome', 'true');
-    setShowOctavosWelcome(false);
+    localStorage.setItem('hide_semis_welcome', 'true');
+    setShowSemisWelcome(false);
   };
 
   // Sync profile metadata with local state when it loads
@@ -197,6 +200,28 @@ export function Dashboard() {
     return { predCount, parlCount, isCompleted, totalPending };
   }, [profile]);
 
+  // Rank of the current user in the sorted leaderboard
+  const myRank = useMemo(() => {
+    if (!profile || !users.length) return 0;
+    const idx = users.findIndex(u => u.uid === profile.uid);
+    return idx >= 0 ? idx + 1 : 0;
+  }, [profile, users]);
+
+  // Load certificate availability from Firestore settings (admin-controlled toggle)
+  useEffect(() => {
+    const loadCertSetting = async () => {
+      try {
+        const snap = await getDoc(doc(db, 'settings', 'general'));
+        if (snap.exists()) {
+          setCertificatesEnabled(snap.data().certificatesEnabled === true);
+        }
+      } catch (e) {
+        console.error('[Dashboard] Error loading cert setting:', e);
+      }
+    };
+    loadCertSetting();
+  }, []);
+
   const handleUpdateProfile = async () => {
     if (!profile) return;
     setSavingProfile(true);
@@ -216,6 +241,203 @@ export function Dashboard() {
       alert("Error al guardar perfil: " + (e instanceof Error ? e.message : String(e)));
     } finally {
       setSavingProfile(false);
+    }
+  };
+
+  // ============================================================
+  // CERTIFICATE DOWNLOAD — Generates a premium canvas certificate
+  // Only available when the Gran Final (ko_104) is finished.
+  // Top 3: gold / silver / bronze name color + special message.
+  // ============================================================
+  const downloadCertificate = () => {
+    if (!profile) return;
+    setDownloadingCert(true);
+    try {
+      const rank = myRank || 0;
+      const totalPts = profile.totalPoints || 0;
+      const name = profile.name || 'Participante';
+
+      const W = 1200, H = 675;
+      const canvas = document.createElement('canvas');
+      canvas.width = W;
+      canvas.height = H;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Canvas not supported');
+
+      // === BACKGROUND ===
+      const bgGrad = ctx.createLinearGradient(0, 0, W, H);
+      bgGrad.addColorStop(0, '#060b14');
+      bgGrad.addColorStop(0.5, '#0a1a2e');
+      bgGrad.addColorStop(1, '#060b14');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, W, H);
+
+      // Pitch green glow (center-bottom)
+      const pitchGlow = ctx.createRadialGradient(W / 2, H * 0.75, 0, W / 2, H * 0.75, 440);
+      pitchGlow.addColorStop(0, 'rgba(0, 110, 45, 0.30)');
+      pitchGlow.addColorStop(1, 'rgba(0, 60, 20, 0)');
+      ctx.fillStyle = pitchGlow;
+      ctx.fillRect(0, 0, W, H);
+
+      // Blue top glow
+      const topGlow = ctx.createRadialGradient(W / 2, 0, 0, W / 2, 0, 380);
+      topGlow.addColorStop(0, 'rgba(15, 40, 130, 0.38)');
+      topGlow.addColorStop(1, 'rgba(15, 40, 130, 0)');
+      ctx.fillStyle = topGlow;
+      ctx.fillRect(0, 0, W, H);
+
+      // === FOOTBALL FIELD LINES (decorative) ===
+      ctx.save();
+      ctx.strokeStyle = 'rgba(20, 140, 60, 0.07)';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(0, H * 0.63); ctx.lineTo(W, H * 0.63); ctx.stroke();
+      ctx.beginPath(); ctx.arc(W / 2, H * 0.63, 175, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.rect(W * 0.23, H * 0.43, W * 0.54, H * 0.4); ctx.stroke();
+      ctx.restore();
+
+      // === DOUBLE BORDER ===
+      const PAD = 22;
+      ctx.strokeStyle = 'rgba(255, 210, 0, 0.72)';
+      ctx.lineWidth = 3.5;
+      ctx.strokeRect(PAD, PAD, W - PAD * 2, H - PAD * 2);
+      ctx.strokeStyle = 'rgba(255, 210, 0, 0.25)';
+      ctx.lineWidth = 1.2;
+      ctx.strokeRect(PAD + 9, PAD + 9, W - (PAD + 9) * 2, H - (PAD + 9) * 2);
+
+      // === CORNER STARS ===
+      const starPos: [number, number, CanvasTextAlign][] = [
+        [PAD + 6, PAD + 27, 'left'], [W - PAD - 6, PAD + 27, 'right'],
+        [PAD + 6, H - PAD - 7, 'left'], [W - PAD - 6, H - PAD - 7, 'right']
+      ];
+      ctx.font = '22px serif';
+      ctx.fillStyle = 'rgba(255, 215, 0, 0.55)';
+      starPos.forEach(([x, y, align]) => { ctx.textAlign = align; ctx.fillText('\u2605', x, y); });
+
+      // === HEADER LINE ===
+      ctx.textAlign = 'left';
+      ctx.font = 'bold 13px Arial';
+      ctx.fillStyle = '#FFD700';
+      ctx.fillText('FIFA WORLD CUP 2026', PAD + 18, 70);
+      ctx.textAlign = 'right';
+      ctx.fillText('THE FINAL \u2022 MetLife Stadium, Nueva Jersey', W - PAD - 18, 70);
+
+      // === TITLE ===
+      ctx.textAlign = 'center';
+      ctx.shadowColor = 'rgba(255, 215, 0, 0.35)';
+      ctx.shadowBlur = 18;
+      ctx.font = 'bold 52px Georgia, "Times New Roman", serif';
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillText('Super Quiniela Mundialista', W / 2, 136);
+      ctx.shadowBlur = 0;
+
+      // Title underline
+      const lineGrad = ctx.createLinearGradient(150, 0, W - 150, 0);
+      lineGrad.addColorStop(0, 'rgba(255,210,0,0)');
+      lineGrad.addColorStop(0.25, 'rgba(255,210,0,0.72)');
+      lineGrad.addColorStop(0.75, 'rgba(255,210,0,0.72)');
+      lineGrad.addColorStop(1, 'rgba(255,210,0,0)');
+      ctx.strokeStyle = lineGrad;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(150, 152); ctx.lineTo(W - 150, 152); ctx.stroke();
+
+      // === DESCRIPTION ===
+      ctx.font = '15px Arial';
+      ctx.fillStyle = 'rgba(170, 210, 255, 0.75)';
+      ctx.fillText(
+        'Por haber demostrado tu conocimiento futbol\u00edstico, talento en los pron\u00f3sticos y capacidad de adivinaci\u00f3n formidable.',
+        W / 2, 184
+      );
+      ctx.fillText('Gracias por participar en la quiniela definitiva del Mundial.', W / 2, 206);
+
+      // === "CERTIFICADO QUE SE OTORGA A" ===
+      ctx.font = 'bold 24px Arial';
+      ctx.fillStyle = 'rgba(255,255,255,0.88)';
+      ctx.fillText('Certificado que se otorga a', W / 2, 255);
+
+      // === NAME COLORS (GOLD / SILVER / BRONZE / WHITE) ===
+      let nameColor = '#FFFFFF';
+      let nameGlow = 'rgba(255,255,255,0.3)';
+      if (rank === 1) { nameColor = '#FFD700'; nameGlow = 'rgba(255,215,0,0.72)'; }
+      else if (rank === 2) { nameColor = '#D8D8D8'; nameGlow = 'rgba(200,200,200,0.55)'; }
+      else if (rank === 3) { nameColor = '#CD7F32'; nameGlow = 'rgba(205,127,50,0.62)'; }
+
+      // Medal badge label for top 3
+      if (rank >= 1 && rank <= 3) {
+        const badge = rank === 1 ? 'CAMPEON' : rank === 2 ? 'SUBCAMPEON' : '3er LUGAR';
+        ctx.font = 'bold 13px Arial';
+        ctx.fillStyle = nameColor;
+        ctx.fillText(badge, W / 2, 280);
+      }
+
+      // === NAME ===
+      const nameFontSize = name.length > 25 ? 40 : name.length > 20 ? 48 : name.length > 15 ? 54 : 62;
+      ctx.shadowColor = nameGlow;
+      ctx.shadowBlur = 28;
+      ctx.font = `bold ${nameFontSize}px Arial, sans-serif`;
+      ctx.fillStyle = nameColor;
+      ctx.fillText(name, W / 2, rank <= 3 ? 364 : 355);
+      ctx.shadowBlur = 0;
+
+      // Divider line below name
+      const shortLineGrad = ctx.createLinearGradient(260, 0, W - 260, 0);
+      shortLineGrad.addColorStop(0, 'rgba(255,210,0,0)');
+      shortLineGrad.addColorStop(0.3, 'rgba(255,210,0,0.6)');
+      shortLineGrad.addColorStop(0.7, 'rgba(255,210,0,0.6)');
+      shortLineGrad.addColorStop(1, 'rgba(255,210,0,0)');
+      ctx.strokeStyle = shortLineGrad;
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(260, 380); ctx.lineTo(W - 260, 380); ctx.stroke();
+
+      // === POSITION & POINTS ===
+      const posLabel =
+        rank === 1 ? '1er Lugar - Campeon' :
+        rank === 2 ? '2do Lugar' :
+        rank === 3 ? '3er Lugar - Podio' :
+        `${rank}o Lugar`;
+      ctx.font = 'bold 27px Arial';
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillText(`${posLabel}  |  ${totalPts} puntos`, W / 2, 424);
+
+      // === CONGRATULATIONS ===
+      ctx.font = `italic ${rank <= 3 ? 18 : 16}px Arial`;
+      if (rank === 1) {
+        ctx.fillStyle = '#FFD700';
+        ctx.fillText('\u00a1Felicitaciones Campeon! Eres el mejor pronosticador del Mundial 2026.', W / 2, 465);
+      } else if (rank === 2) {
+        ctx.fillStyle = '#D8D8D8';
+        ctx.fillText('\u00a1Extraordinario! Quedaste en segundo lugar, eres un crack de las quinielas.', W / 2, 465);
+      } else if (rank === 3) {
+        ctx.fillStyle = '#CD7F32';
+        ctx.fillText('\u00a1Excelente! Llegaste al podio, demostraste un gran nivel de pronosticos.', W / 2, 465);
+      } else {
+        ctx.fillStyle = 'rgba(160, 200, 255, 0.65)';
+        ctx.fillText('\u00a1Gracias por tu participacion en la Super Quiniela Mundialista 2026!', W / 2, 465);
+      }
+
+      // === FOOTER ===
+      ctx.font = '12px Arial';
+      ctx.fillStyle = 'rgba(140, 175, 220, 0.4)';
+      ctx.fillText(
+        'FIFA World Cup 2026  \u2022  Super Quiniela Mundialista  \u2022  Julio 2026',
+        W / 2, H - PAD - 12
+      );
+
+      // === TRIGGER DOWNLOAD ===
+      const safeFileName = name
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_');
+      const link = document.createElement('a');
+      link.download = `certificado_${safeFileName}_QM2026.png`;
+      link.href = canvas.toDataURL('image/png', 1.0);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+    } catch (err) {
+      console.error('Error generating certificate:', err);
+      alert('Error al generar el certificado. Por favor intenta de nuevo.');
+    } finally {
+      setDownloadingCert(false);
     }
   };
 
@@ -273,8 +495,8 @@ export function Dashboard() {
         </div>
       </header>
 
-      {/* WELCOME TO OCTAVOS BANNER */}
-      {showOctavosWelcome && (
+      {/* WELCOME TO SEMIS BANNER */}
+      {showSemisWelcome && (
         <motion.div
           initial={{ opacity: 0, y: -20, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -343,17 +565,19 @@ export function Dashboard() {
                   </span>
                   <span className="text-xs font-bold text-amber-300 flex items-center gap-1">
                     <Sparkles className="w-3.5 h-3.5 animate-pulse" />
-                    Octavos de Final
+                    Semifinales
                   </span>
                 </div>
                 <h3 className="text-lg sm:text-xl font-black font-display tracking-tight text-white leading-tight">
-                  ¡Bienvenidos a los Octavos de Final!
+                  ¡Bienvenidos a las Semifinales!
                 </h3>
                 <p className="text-xs sm:text-sm text-slate-200 leading-relaxed font-sans font-medium">
-                  Si has llegado hasta aquí y aún sigues sumando en tu quiniela, <strong className="text-yellow-400">¡muchas felicidades!</strong> 🥳🔥
+                  Extraordinario que hayas llegado hasta aqui, y sigues sumando. eres formidable. <br />
+                  Ya falta poco para el final donde solo uno alcanzara el Olimpo de los pronosticadores Mundialistas.
                 </p>
                 <p className="text-[11px] text-slate-400 leading-normal">
-                  Recuerda: los puntos de esta fase se calculan incluyendo la clasificación (+3 pts) y el marcador final oficial. ¡Que ganen tus favoritos!
+                  Si tu Equipo logra ser Campeon, habras demostrado ser todo un pro de las quinielas de Futbol. <br />
+                  Falta Poco, te deseo suerte y que los Dioses del Futbol te acompañen.
                 </p>
               </div>
             </div>
@@ -373,7 +597,7 @@ export function Dashboard() {
       )}
 
       {/* RE-SHOW PILL (Visible if closed, to be friendly to users) */}
-      {!showOctavosWelcome && (
+      {!showSemisWelcome && (
         <motion.div 
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -381,13 +605,13 @@ export function Dashboard() {
         >
           <button 
             onClick={() => {
-              localStorage.removeItem('hide_octavos_welcome');
-              setShowOctavosWelcome(true);
+              localStorage.removeItem('hide_semis_welcome');
+              setShowSemisWelcome(true);
             }}
             className="flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-purple-900/60 to-indigo-900/60 border border-purple-500/20 text-purple-200 hover:text-white rounded-full text-xs font-bold transition-all active:scale-95 shadow-sm hover:shadow-purple-500/5"
           >
             <Sparkles className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
-            <span>Ver nota de Octavos</span>
+            <span>Ver nota de Semifinales</span>
           </button>
         </motion.div>
       )}
@@ -494,6 +718,61 @@ export function Dashboard() {
               </div>
             </div>
           </div>
+
+          {/* ===== CERTIFICATE DOWNLOAD BUTTON ===== */}
+          {/* Only visible when admin activates certificates via the Admin panel */}
+          {certificatesEnabled && (
+            <div className="relative z-10 mt-5 pt-4 border-t border-white/20">
+              <div className="flex flex-col sm:flex-row items-center gap-3">
+                {/* Trophy icon with rank color */}
+                <div className={`p-2.5 rounded-xl shrink-0 ${
+                  myRank === 1 ? 'bg-yellow-400/20 border border-yellow-400/40' :
+                  myRank === 2 ? 'bg-slate-300/20 border border-slate-300/40' :
+                  myRank === 3 ? 'bg-amber-700/20 border border-amber-700/40' :
+                  'bg-indigo-500/20 border border-indigo-400/30'
+                }`}>
+                  <Trophy className={`w-5 h-5 ${
+                    myRank === 1 ? 'text-yellow-400' :
+                    myRank === 2 ? 'text-slate-300' :
+                    myRank === 3 ? 'text-amber-600' :
+                    'text-indigo-400'
+                  }`} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-black text-white/90 uppercase tracking-wider">
+                    {myRank === 1 ? '🥇 ¡Eres el Campeón!' :
+                     myRank === 2 ? '🥈 ¡2do Lugar!' :
+                     myRank === 3 ? '🥉 ¡En el Podio!' :
+                     '🏆 Certificado de Participación'}
+                  </p>
+                  <p className="text-[11px] text-white/55 mt-0.5">
+                    El Mundial ha terminado. Descarga tu certificado oficial.
+                  </p>
+                </div>
+                <button
+                  id="btn-download-certificate"
+                  onClick={downloadCertificate}
+                  disabled={downloadingCert}
+                  className={`shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-xl font-black text-sm transition-all active:scale-95 disabled:opacity-60 shadow-lg ${
+                    myRank === 1
+                      ? 'bg-gradient-to-r from-yellow-500 to-amber-400 text-slate-900 shadow-yellow-500/30 hover:from-yellow-600 hover:to-amber-500'
+                      : myRank === 2
+                      ? 'bg-gradient-to-r from-slate-300 to-slate-200 text-slate-900 shadow-slate-300/20 hover:from-slate-400 hover:to-slate-300'
+                      : myRank === 3
+                      ? 'bg-gradient-to-r from-amber-700 to-amber-600 text-white shadow-amber-700/30 hover:from-amber-800 hover:to-amber-700'
+                      : 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-indigo-500/20 hover:from-indigo-700 hover:to-indigo-600'
+                  }`}
+                >
+                  {downloadingCert ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Trophy className="w-4 h-4" />
+                  )}
+                  {downloadingCert ? 'Generando...' : 'Descargar Certificado'}
+                </button>
+              </div>
+            </div>
+          )}
         </motion.div>
       )}
 

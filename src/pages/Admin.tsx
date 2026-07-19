@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, getDocsFromServer, doc, setDoc, query, orderBy, deleteDoc, where, updateDoc, writeBatch, onSnapshot } from 'firebase/firestore';
+import { collection, addDoc, getDocs, getDocsFromServer, doc, setDoc, getDoc, query, orderBy, deleteDoc, where, updateDoc, writeBatch, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Match, UserProfile, Prediction, calculateMatchPoints, ParleyQuestion } from '../types';
 import { WORLD_CUP_TEAMS, OFFICIAL_2026_MATCHES_SEED } from '../lib/constants';
@@ -24,6 +24,9 @@ export function Admin() {
   const [diagnosticResults, setDiagnosticResults] = useState<any>(null);
   const [runningDiagnostic, setRunningDiagnostic] = useState(false);
   const [editingMatchId, setEditingMatchId] = useState<string | null>(null);
+  // Certificate toggle — controls whether participants can download their certificates
+  const [certEnabled, setCertEnabled] = useState(false);
+  const [togglingCert, setTogglingCert] = useState(false);
 
   // Parse Firestore user docs into UserProfile objects
   const parseUserDocs = (docs: any[]): UserProfile[] => {
@@ -45,6 +48,38 @@ export function Admin() {
       if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
       return a.name.localeCompare(b.name);
     });
+  };
+
+  // Load initial certificate setting from Firestore
+  useEffect(() => {
+    const loadCertSetting = async () => {
+      try {
+        const snap = await getDoc(doc(db, 'settings', 'general'));
+        if (snap.exists()) {
+          setCertEnabled(snap.data().certificatesEnabled === true);
+        }
+      } catch (e) {
+        console.error('Error loading cert setting:', e);
+      }
+    };
+    loadCertSetting();
+  }, []);
+
+  // Toggle certificate availability for all participants
+  const toggleCertificates = async () => {
+    setTogglingCert(true);
+    try {
+      const newValue = !certEnabled;
+      await setDoc(doc(db, 'settings', 'general'), {
+        certificatesEnabled: newValue
+      }, { merge: true });
+      setCertEnabled(newValue);
+    } catch (e) {
+      console.error('Error toggling certificates:', e);
+      alert('Error al cambiar configuración: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setTogglingCert(false);
+    }
   };
 
   useEffect(() => {
@@ -361,6 +396,17 @@ export function Admin() {
       // 3. Get existing users FROM SERVER
       const usersSnap = await getDocsFromServer(collection(db, 'users'));
       const existingUserIds = new Set(usersSnap.docs.map(d => d.id));
+
+      // Bonus points are stored separately and preserved across all recalculations
+      // They are set once by applyFinalBonusPoints and must not be overwritten here.
+      const bonusPointsByUser: Record<string, number> = {};
+      usersSnap.docs.forEach(d => {
+        const bp = d.data().finalMatchupBonusPoints;
+        if (typeof bp === 'number' && bp > 0) {
+          bonusPointsByUser[d.id] = bp;
+        }
+      });
+
       
       // 4. Group data by userId
       const userStats: { 
@@ -423,11 +469,14 @@ export function Admin() {
         const stats = userStats[userId];
         const completed = stats.predsCount === targetMatches && stats.parleysCount === targetParleys;
         const userRef = doc(db, 'users', userId);
+        // Add bonus points on top of prediction/parley points (preserved across recalculations)
+        const bonusPoints = bonusPointsByUser[userId] || 0;
+        const finalTotal = stats.points + bonusPoints;
         
         if (existingUserIds.has(userId)) {
           // Update existing
           userUpdateBatch.update(userRef, {
-            totalPoints: stats.points,
+            totalPoints: finalTotal,
             predictionsCount: stats.predsCount,
             parleyCount: stats.parleysCount,
             completed: completed
@@ -440,7 +489,7 @@ export function Admin() {
             name: `Participante Recuperado (${userId.substring(0, 5)})`,
             email: 'Pendiente de inicio de sesión',
             role: 'participant',
-            totalPoints: stats.points,
+            totalPoints: finalTotal,
             avatarEmoji: '⚽',
             predictionsCount: stats.predsCount,
             parleyCount: stats.parleysCount,
@@ -452,10 +501,13 @@ export function Admin() {
       }
       
       // Sync users who exist in users but have no predictions/answers
+      // Still include their bonus points if they have any
       for (const uDoc of usersSnap.docs) {
         const userId = uDoc.id;
         if (!userStats[userId]) {
+          const bonusOnly = bonusPointsByUser[userId] || 0;
           userUpdateBatch.update(uDoc.ref, {
+            totalPoints: bonusOnly,
             predictionsCount: 0,
             parleyCount: 0,
             completed: false
@@ -856,6 +908,113 @@ export function Admin() {
     }
   };
 
+  // ============================================================
+  // BONUS FINAL — 25 puntos para quienes predijeron Argentina vs España en la Gran Final
+  // Verifica el bracket RESUELTO del usuario (ko_104) para Argentina y España.
+  // Solo aplica una vez por participante (campo finalMatchupBonusApplied).
+  // ============================================================
+  const applyFinalBonusPoints = async () => {
+    const BONUS_POINTS = 25;
+    const confirmed = window.confirm(
+      `🏆 BONUS FINAL — ARGENTINA vs ESPAÑA\n\n` +
+      `Se aplicarán ${BONUS_POINTS} puntos bonus a todos los participantes que\n` +
+      `en sus pronósticos predijeron que Argentina y España llegarían a la Gran Final.\n\n` +
+      `⚠️ Este bonus se aplica UNA SOLA VEZ por participante.\n` +
+      `Quienes ya tengan el bonus aplicado serán omitidos automáticamente.\n\n` +
+      `¿Confirmar la aplicación del bonus?`
+    );
+    if (!confirmed) return;
+
+    setIsSeeding(true);
+    try {
+      const [allPredsSnap, matchesSnap, usersSnap] = await Promise.all([
+        getDocsFromServer(collection(db, 'predictions')),
+        getDocsFromServer(collection(db, 'matches')),
+        getDocsFromServer(collection(db, 'users'))
+      ]);
+
+      const dbMatches = matchesSnap.docs.map(d => ({ id: d.id, ...d.data() } as Match));
+
+      // Group all predictions by userId
+      const predsByUser: Record<string, Record<string, Prediction>> = {};
+      allPredsSnap.docs.forEach(d => {
+        const pred = { id: d.id, ...d.data() } as Prediction;
+        if (!pred.userId) return;
+        if (!predsByUser[pred.userId]) predsByUser[pred.userId] = {};
+        predsByUser[pred.userId][pred.matchId] = pred;
+      });
+
+      // Build user data map for quick lookup
+      const userDataMap: Record<string, any> = {};
+      usersSnap.docs.forEach(d => { userDataMap[d.id] = d.data(); });
+
+      const batch = writeBatch(db);
+      const qualified: string[] = [];
+      const alreadyBonused: string[] = [];
+      const notQualified: string[] = [];
+
+      // Normalize helper (strips accents, lowercases)
+      const normalize = (s: string) =>
+        s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+
+      for (const userId of Object.keys(predsByUser)) {
+        const userData = userDataMap[userId];
+        const displayName = userData?.name || userId.substring(0, 8);
+
+        // Skip if bonus already applied
+        if (userData?.finalMatchupBonusApplied === true) {
+          alreadyBonused.push(displayName);
+          continue;
+        }
+
+        // Resolve user's bracket to get their predicted Final teams
+        const userPredsMap = predsByUser[userId];
+        const resolvedBracket = resolveUserPredictionsBracket(userPredsMap, dbMatches);
+        const finalTeamA = resolvedBracket['ko_104']?.teamA;
+        const finalTeamB = resolvedBracket['ko_104']?.teamB;
+
+        if (!finalTeamA || !finalTeamB || finalTeamA === 'Pendiente' || finalTeamB === 'Pendiente') {
+          notQualified.push(displayName);
+          continue;
+        }
+
+        const teamANorm = normalize(finalTeamA);
+        const teamBNorm = normalize(finalTeamB);
+        const hasArgentina = teamANorm === 'argentina' || teamBNorm === 'argentina';
+        const hasEspana = teamANorm === 'espana' || teamBNorm === 'espana';
+
+        if (hasArgentina && hasEspana) {
+          qualified.push(displayName);
+          batch.update(doc(db, 'users', userId), {
+            finalMatchupBonusPoints: BONUS_POINTS,
+            finalMatchupBonusApplied: true
+          });
+        } else {
+          notQualified.push(displayName);
+        }
+      }
+
+      await batch.commit();
+
+      // Run full recalculate so bonus points are added to totalPoints immediately
+      await recalculateLeaderboard(false);
+
+      const resultMsg = [
+        `✅ Bonus de ${BONUS_POINTS} puntos aplicado con éxito:\n`,
+        `\n👑 CALIFICADOS (${qualified.length}): ${qualified.join(', ') || 'Ninguno'}`,
+        alreadyBonused.length > 0 ? `\n\n⚠️ Ya tenían el bonus (${alreadyBonused.length}): ${alreadyBonused.join(', ')}` : '',
+        notQualified.length > 0 ? `\n\n❌ No calificaron — ${notQualified.length} participante(s)` : ''
+      ].join('');
+
+      alert(resultMsg);
+    } catch (e) {
+      console.error('Error applying final bonus:', e);
+      alert('Error al aplicar el bonus: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setIsSeeding(false);
+    }
+  };
+
   return (
     <div className="space-y-10 pb-20">
       <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -932,6 +1091,33 @@ export function Admin() {
           >
             <Trophy className="w-4 h-4 fill-white" />
             🏆 Sembrar Fase Final (3er Lugar + Gran Final)
+          </button>
+          <button 
+            onClick={applyFinalBonusPoints}
+            disabled={isSeeding}
+            className="flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-900 rounded-xl shadow-lg shadow-amber-300/40 hover:from-amber-600 hover:to-yellow-500 disabled:opacity-50 transition font-black border-2 border-amber-400"
+            title="Aplica 25 puntos bonus a quienes predijeron Argentina vs España en la Gran Final"
+          >
+            <Trophy className="w-4 h-4" />
+            ⭐ Bonus Final: ARG vs ESP (+25 pts)
+          </button>
+          {/* ===== CERTIFICATE TOGGLE ===== */}
+          <button
+            onClick={toggleCertificates}
+            disabled={togglingCert}
+            title={certEnabled ? 'Clic para DESHABILITAR la descarga de certificados' : 'Clic para HABILITAR la descarga de certificados'}
+            className={`flex items-center gap-2 px-5 py-3 rounded-xl font-black text-sm transition-all border-2 shadow-lg disabled:opacity-50 ${
+              certEnabled
+                ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-400 shadow-emerald-300/40'
+                : 'bg-slate-600 hover:bg-slate-700 text-white border-slate-500 shadow-slate-400/20'
+            }`}
+          >
+            {togglingCert ? (
+              <RefreshCw className="w-4 h-4 animate-spin" />
+            ) : (
+              <span className="text-base">{certEnabled ? '🟢' : '⚫'}</span>
+            )}
+            Certificados: {certEnabled ? 'ACTIVADOS' : 'DESACTIVADOS'}
           </button>
         </div>
       </header>
